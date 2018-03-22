@@ -60,41 +60,59 @@ import           Codec.Wavefront ( WavefrontOBJ
                                  , elValue
                                  , elMtl )
 
-import           Codec.MeshObjGles.Types ( Coords
-                       , Sequence (Sequence)
-                       , ObjName
-                       , MtlName
-                       , Texture (Texture)
-                       , TextureConfigI (TextureConfigI)
-                       , TextureConfigIT
-                       , TextureConfig (TextureConfig)
-                       , TextureMap
-                       , Obj (Obj)
-                       , Burst (Burst)
-                       , MaterialMapCoords
-                       , MaterialMapMaterial
-                       , Material
-                       , ObjMap
-                       , Vertex2 (Vertex2)
-                       , Vertex3 (Vertex3)
-                       , tcWidth
-                       , tcHeight
-                       , tcImageBase64
-                       , tciImagePath
-                       , tciWidth
-                       , tciHeight
-                       , tciObjectName )
+import           Codec.MeshObjGles.ParseUtil ( frint
+                                             , verple2
+                                             , verple3
+                                             , verl2
+                                             , verl3
+                                             , dec
+                                             , asterisk
+                                             , fst3
+                                             , snd3
+                                             , thd3 )
+
+import           Codec.MeshObjGles.Types ( Config (Config)
+                                         , Coords
+                                         , Sequence (Sequence)
+                                         , ObjName
+                                         , MtlName
+                                         , Texture (Texture)
+                                         , TextureConfigI (TextureConfigI)
+                                         , TextureConfigIT
+                                         , TextureConfig (TextureConfig)
+                                         , TextureMap
+                                         , Obj (Obj)
+                                         , Burst (Burst)
+                                         , MaterialMapCoords
+                                         , MaterialMapMaterial
+                                         , Material
+                                         , ObjMap
+                                         , Vertex2 (Vertex2)
+                                         , Vertex3 (Vertex3)
+                                         , configFramesDir
+                                         , configTextureDir
+                                         , configObjFilename
+                                         , configMtlFilename
+                                         , configTextureConfigYaml
+                                         , tcWidth
+                                         , tcHeight
+                                         , tcImageBase64
+                                         , tciImagePath
+                                         , tciWidth
+                                         , tciHeight
+                                         , tciObjectName )
 
 import qualified Codec.MeshObjGles.ParseMtl as Pmtl  ( parse
                                                      , start )
 
 import           Prelude hiding ( elem )
 
-parse :: (FilePath, FilePath) -> IO Sequence
-parse (framesDir, textureDir) = do
-    materialMapMaterial <- getMaterial framesDir
-    objMap <- getObjMap framesDir
-    textureMap <- getTextureMap . T.pack $ textureDir
+parse :: Config -> IO Sequence
+parse config = do
+    let Config framesDir textureDir objFilename mtlFilename textureConfigYaml = config
+    materialMapMaterial <- getMaterial framesDir mtlFilename
+    objMap <- getObjMap framesDir objFilename
+    textureMap <- getTextureMap (T.pack textureDir) textureConfigYaml
 
     let objNames = Dmap.keys objMap
         objNamesTex = Dmap.keys textureMap
@@ -124,26 +142,23 @@ mapListM f m = mapM map' $ Dmap.keys m where
     map' key = f key $ val' key
     val' key = fromJust $ Dmap.lookup key m
 
-getObjMap :: FilePath -> IO ObjMap
-getObjMap framesDir = prepare' <$> parseObj framesDir where
+getObjMap :: FilePath -> FilePath -> IO ObjMap
+getObjMap framesDir objFilename = prepare' <$> parseObj framesDir objFilename where
     prepare' = either error' prepareFrame
     error' = error . printf "bad parse: %s"
 
-filename = "wolf_000001.obj"
--- file = "test_000001.obj"
-
-parseObj :: FilePath -> IO (Either String WavefrontOBJ)
-parseObj framesDir = do
-    let file = framesDir <> filename
+parseObj :: FilePath -> FilePath -> IO (Either String WavefrontOBJ)
+parseObj framesDir objFilename = do
+    let file = framesDir <> objFilename
     parseFile file
 
-getMaterial :: FilePath -> IO MaterialMapMaterial
-getMaterial framesDir = do
-    mtl <- readFile $ framesDir <> "/wolf_000001.mtl"
+getMaterial :: FilePath -> FilePath -> IO MaterialMapMaterial
+getMaterial framesDir mtlFilename = do
+    mtl <- readFile $ framesDir <> "/" <> mtlFilename
     Pmtl.parse mtl :: IO MaterialMapMaterial
 
-getTextureMap :: Text -> IO TextureMap
-getTextureMap textureDir' = maybe err' (prepareTextureConfig textureDir') textureConfig' where
+getTextureMap :: Text -> ByteString -> IO TextureMap
+getTextureMap textureDir textureConfigYaml = maybe err' (prepareTextureConfig textureDir) textureConfig' where
     err' = error "Couldn't decode texture config yaml"
     textureConfig' = Y.decode textureConfigYaml
 
@@ -219,41 +234,6 @@ toVertex parsed (FaceIndex locIndex texCoordIndexMb norIndexMb) = v where
     lookupLoc x      = verl3 $ [locX, locY, locZ]     `asterisk` lookup' objLocations x
     lookupTexCoord x = verl2 $ [texcoordR, texcoordS] `asterisk` lookup' objTexCoords x
     lookupNormal x   = verl3 $ [norX, norY, norZ]     `asterisk` lookup' objNormals x
-
-frint = fromIntegral
-verple2 (a, b) = Vertex2 a b
-verple3 (a, b, c) = Vertex3 a b c
-verl2 [a, b] = Vertex2 a b
-verl3 [a, b, c] = Vertex3 a b c
-dec = (+ (-1))
-
-fs `asterisk` x = map map' fs where map' f = f x
-
-fst3 (a, b, c) = a
-snd3 (a, b, c) = b
-thd3 (a, b, c) = c
-
-textureConfigYaml :: ByteString
-textureConfigYaml = [r|
-# --- the objectName mappings are just guesses.
-textures:
-  - image: fur.png.base64
-    width: 400
-    height: 200
-    objectName: Cube.001
-  - image: body.png.base64
-    width: 4096
-    height: 2048
-    objectName: Cube.002
-  - image: eyes-1.png.base64
-    width: 256
-    height: 256
-    objectName: Cube
-  - image: eyes-2.png.base64
-    width: 256
-    height: 256
-    objectName: Plane
-|]
 
 prepareTextureConfig :: Text -> TextureConfigI -> IO TextureMap
 prepareTextureConfig textureDir' (TextureConfigI tcs) = foldM prepare' Dmap.empty tcs where

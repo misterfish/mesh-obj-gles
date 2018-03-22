@@ -47,36 +47,42 @@
 -- they are common to several sequences, but for now they are all parsed
 -- separately.
 
-module Codec.MeshObjGles.Types ( MaterialMapCoords
-             , ObjMap
-             , MaterialMapMaterial
-             , Burst (Burst)
-             , Coords
-             , Material (Material)
-             , Obj (Obj)
-             , ObjName
-             , MtlName
-             , Texture (Texture)
-             , Vertex3 (Vertex3)
-             , Vertex2 (Vertex2)
-             , TextureConfigI (TextureConfigI)
-             , TextureConfigIT (TextureConfigIT)
-             , TextureConfig (TextureConfig)
-             , TextureMap
-             , Sequence (Sequence)
-             , materialName
-             , materialSpecularExp
-             , materialAmbientColor
-             , materialDiffuseColor
-             , materialSpecularColor
-             , tciImagePath
-             , tciWidth
-             , tciHeight
-             , tciObjectName
-             , tcImageBase64
-             , tcWidth
-             , tcHeight
-             ) where
+module Codec.MeshObjGles.Types ( Config (Config)
+                               , MaterialMapCoords
+                               , ObjMap
+                               , MaterialMapMaterial
+                               , Burst (Burst)
+                               , Coords
+                               , Material (Material)
+                               , Obj (Obj)
+                               , ObjName
+                               , MtlName
+                               , Texture (Texture)
+                               , Vertex3 (Vertex3)
+                               , Vertex2 (Vertex2)
+                               , TextureConfigI (TextureConfigI)
+                               , TextureConfigIT (TextureConfigIT)
+                               , TextureConfig (TextureConfig)
+                               , TextureMap
+                               , Sequence (Sequence)
+                               , configFramesDir
+                               , configTextureDir
+                               , configObjFilename
+                               , configMtlFilename
+                               , configTextureConfigYaml
+                               , materialName
+                               , materialSpecularExp
+                               , materialAmbientColor
+                               , materialDiffuseColor
+                               , materialSpecularColor
+                               , tciImagePath
+                               , tciWidth
+                               , tciHeight
+                               , tciObjectName
+                               , tcImageBase64
+                               , tcWidth
+                               , tcHeight
+                               ) where
 
 import           Data.ByteString ( ByteString )
 import           Data.Text ( Text )
@@ -93,6 +99,12 @@ import           Data.Yaml as Y ( (.:)
                                 )
 import qualified Data.Yaml as Y ( Value (Object)
                                 , Parser )
+
+data Config = Config { configFramesDir :: FilePath
+                     , configTextureDir :: FilePath
+                     , configObjFilename :: FilePath
+                     , configMtlFilename :: FilePath
+                     , configTextureConfigYaml :: ByteString }
 
 data Sequence  = Sequence [Obj] deriving Show
 
