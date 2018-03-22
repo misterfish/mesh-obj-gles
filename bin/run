@@ -27,6 +27,6 @@ mcb     -odir .
 mcb     -o ./Main
 mcg
 
-cmd ln -s "$rootdir"/example
+cmd ln -sf "$rootdir"/example
 
 cmd ./Main "$@"

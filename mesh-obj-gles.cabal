@@ -20,20 +20,10 @@ source-repository head
 
 library
   exposed-modules:
-      Graphics.SGCDemo.Config
-      Graphics.SGCDemo.Coords
-      Graphics.SGCDemo.CubeFaces
-      Graphics.SGCDemo.Draw
-      Graphics.SGCDemo.Events
-      Graphics.SGCDemo.Extras
-      Graphics.SGCDemo.ImageMock
-      Graphics.SGCDemo.Launch
-      Graphics.SGCDemo.Pixels
-      Graphics.SGCDemo.Shader
-      Graphics.SGCDemo.Types
-      Graphics.SGCDemo.Util
-      Graphics.SGCDemo.Util2
-      Graphics.SGCDemo.Wolf
+      Codec.MeshObjGles.Parse
+      Codec.MeshObjGles.ParseMtl
+      Codec.MeshObjGles.ParseUtil
+      Codec.MeshObjGles.Types
   hs-source-dirs:
       src
   ghc-options:
@@ -46,6 +36,6 @@ library
     , yaml >= 0.8.25 && <0.9
     , parsec >= 3.1.11 && <3.2
     , directory >= 1.3.0.0 && <1.3.1
-    , raw-string-qq >= 1.1 && <2
+    , raw-strings-qq >= 1.1 && <2
     , wavefront >= 0.7.1.1 && <0.7.2
   default-language: Haskell2010
