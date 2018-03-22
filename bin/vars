@@ -1,0 +1,43 @@
+#!/bin/bash
+
+set -eu
+
+str-length () {
+    local ret="$1"
+    local str="$2"
+    local len
+    len=$(wc -c <<< "$str")
+    let len=len-1
+    read -d '' "$ret" <<< "$len" || true
+}
+
+get-stack-path () {
+    local ret="$1"
+    local wut="$2"
+    local val
+    str-length _ret "$wut"
+    l="$_ret"
+    let l=l+3
+    info "stack path | grep -P '^$wut' | cut -c '$l'-"
+    val=$(stack path | grep -P "^$wut" | cut -c "$l"-)
+    read -d '' "$ret" <<< "$val" || true
+}
+
+projectname="sdl-cairo-gl-photo-cube"
+projectnameexe="$projectname"-exe
+projectnametest="$projectname"-test
+rootdir="$bindir"/..
+assetsdir="$rootdir"/assets
+distdir="$rootdir"/dist
+distbuilddir="$distdir"/build
+distbinarypath="$distbuilddir"/"$projectname"
+distassetsdir="$distbuilddir"/assets
+
+#get-stack-path _ret dist-dir
+#stackdistdirroot="$_ret"
+#stackdistdir="$stackdistdirroot"/build/"$projectnameexe"
+#stackdistexe="$stackdistdir"/"$projectnameexe"
+#get-stack-path _ret local-install-root
+#stackinstalldirroot="$_ret"
+
+# ex: ft=sh

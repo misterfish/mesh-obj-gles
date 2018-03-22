@@ -1,0 +1,32 @@
+#!/bin/bash
+
+set -e
+
+USAGE="Usage: $0"
+
+bindir=$(realpath "$(dirname "$0")")
+
+. "$bindir"/functions.bash
+. "$bindir"/vars
+rootdir="$bindir"/..
+
+also () {
+    f="$1"; shift
+    "$@" && "$f"
+}
+
+mkchd "$rootdir"/build
+
+mci
+mcb ghc
+
+mcb -O0
+mcb     "$rootdir"/app/Main.hs
+mcb     -i"$rootdir"/src
+mcb     -odir .
+mcb     -o ./Main
+mcg
+
+cmd ln -s "$rootdir"/example
+
+cmd ./Main "$@"

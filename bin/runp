@@ -1,0 +1,35 @@
+#!/bin/bash
+
+set -e
+
+USAGE="Usage: $0"
+
+bindir=$(realpath "$(dirname "$0")")
+
+. "$bindir"/functions.bash
+. "$bindir"/vars
+rootdir="$bindir"/..
+
+also () {
+    f="$1"; shift
+    "$@" && "$f"
+}
+
+mkchd "$rootdir"/build
+
+mci
+mcb ghc
+# --- big difference on lazy.
+mcb     -O1
+mcb     -XPatternSynonyms "$rootdir"/app/Main.hs
+# --- puts .o file in the src dir, not ideal.
+mcb     "$rootdir"/src/clib.c
+mcb     -i"$rootdir"/src
+mcb     -odir .
+mcb     -rtsopts
+mcb     -prof -auto-all -caf-all
+mcb     -o ./Main
+mcg
+
+cmd ln -sf "$rootdir"/assets
+cmd ./Main "$@" +RTS -p

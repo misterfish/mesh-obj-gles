@@ -1,0 +1,14 @@
+wolf
+
+*.dyn_hi
+*.dyn_o
+
+*.swo
+*.swp
+
+*.hi
+*.o
+
+Main
+
+build
