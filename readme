@@ -1,0 +1,18 @@
+source: https://drive.google.com/drive/folders/0BzIQm-eK85EQWkFwZzFNdFJpcXc
+
+need textures.zip and the .blend (not .obj -- we will export these from
+blender to get the full animation sequence).
+
+also ignore the wolf_1, wolf_2 etc. .blend files, which are not necessary.
+
+• animation, apply modifiers, include edges, write normals, include uvs,
+write materials, triangulate faces, objects as obj groups
+
+• need to make a file mapping textures to objects (.obj doesn't handle this)
+
+
+
+mystery: how to export a non-uniform texture from blender. maybe not
+possible.
+(there is a file path encoded in the .mtl file, but blender doesn't export
+this file; not even sure if it honors the file internally)

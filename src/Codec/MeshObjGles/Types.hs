@@ -3,7 +3,9 @@
 -- | The root structure is a Sequence, which is a mashup of several .obj
 -- files, one .mtl file, and one (for now non-optional) texture per .obj.
 --
--- A Sequence contains a list of Obj structures.
+-- A Sequence contains a list of SequenceFrame structures.
+--
+-- A SequenceFrame contains a list of Obj structures.
 --
 -- An Obj is a coupling of a Texture and a list of Burst structures.
 --
@@ -57,17 +59,20 @@ module Codec.MeshObjGles.Types ( Config (Config)
                                , Obj (Obj)
                                , ObjName
                                , MtlName
+                               , Vertices
+                               , TexCoords
+                               , Normals
+                               , TextureMap
                                , Texture (Texture)
                                , Vertex3 (Vertex3)
                                , Vertex2 (Vertex2)
                                , TextureConfigI (TextureConfigI)
                                , TextureConfigIT (TextureConfigIT)
                                , TextureConfig (TextureConfig)
-                               , TextureMap
                                , Sequence (Sequence)
-                               , configFramesDir
+                               , SequenceFrame (SequenceFrame)
                                , configTextureDir
-                               , configObjFilename
+                               , configObjFilenames
                                , configMtlFilename
                                , configTextureConfigYaml
                                , materialName
@@ -82,6 +87,8 @@ module Codec.MeshObjGles.Types ( Config (Config)
                                , tcImageBase64
                                , tcWidth
                                , tcHeight
+                               , makeInfiniteSequence
+                               , tailSequence
                                ) where
 
 import           Data.ByteString ( ByteString )
@@ -100,13 +107,13 @@ import           Data.Yaml as Y ( (.:)
 import qualified Data.Yaml as Y ( Value (Object)
                                 , Parser )
 
-data Config = Config { configFramesDir :: FilePath
-                     , configTextureDir :: FilePath
-                     , configObjFilename :: FilePath
+data Config = Config { configTextureDir :: FilePath
+                     , configObjFilenames :: [FilePath]
                      , configMtlFilename :: FilePath
                      , configTextureConfigYaml :: ByteString }
 
-data Sequence  = Sequence [Obj] deriving Show
+data Sequence = Sequence [SequenceFrame] deriving Show
+data SequenceFrame  = SequenceFrame [Obj] deriving Show
 
 data Obj       = Obj Texture [Burst] deriving Show
 
@@ -169,9 +176,9 @@ instance FromJSON TextureConfigIT where
             v .: "objectName"
     parseJSON _ = error "invalid type for parseJSON TextureConfigIT"
 
--- makeInfiniteSequence :: Sequence -> Sequence
--- makeInfiniteSequence (Sequence s) = Sequence $ g s where
---     g = concat . repeat
---
--- tailSequence :: Sequence -> Sequence
--- tailSequence (Sequence s) = Sequence $ tail s
+makeInfiniteSequence :: Sequence -> Sequence
+makeInfiniteSequence (Sequence s) = Sequence $ g s where
+    g = concat . repeat
+
+tailSequence :: Sequence -> Sequence
+tailSequence (Sequence s) = Sequence $ tail s

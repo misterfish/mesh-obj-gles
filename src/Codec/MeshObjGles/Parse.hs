@@ -1,7 +1,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Codec.MeshObjGles.Parse ( parse ) where
+module Codec.MeshObjGles.Parse ( Config (Config)
+                               , TextureConfig (TextureConfig)
+                               , Sequence (Sequence)
+                               , SequenceFrame (SequenceFrame)
+                               , Obj (Obj)
+                               , Texture (Texture)
+                               , Burst (Burst)
+                               , Vertices
+                               , TexCoords
+                               , TextureMap
+                               , ObjName
+                               , MtlName
+                               , Normals
+                               , Vertex2 (Vertex2)
+                               , Vertex3 (Vertex3)
+                               , materialName
+                               , materialSpecularExp
+                               , materialAmbientColor
+                               , materialDiffuseColor
+                               , materialSpecularColor
+                               , makeInfiniteSequence
+                               , tailSequence
+                               , parse ) where
 
 import           Data.ByteString as BS ( ByteString )
 import qualified Data.ByteString as BS ( readFile )
@@ -74,6 +96,7 @@ import           Codec.MeshObjGles.ParseUtil ( frint
 import           Codec.MeshObjGles.Types ( Config (Config)
                                          , Coords
                                          , Sequence (Sequence)
+                                         , SequenceFrame (SequenceFrame)
                                          , ObjName
                                          , MtlName
                                          , Texture (Texture)
@@ -87,13 +110,22 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , MaterialMapMaterial
                                          , Material
                                          , ObjMap
+                                         , Vertices
+                                         , TexCoords
+                                         , Normals
                                          , Vertex2 (Vertex2)
                                          , Vertex3 (Vertex3)
-                                         , configFramesDir
+                                         , makeInfiniteSequence
+                                         , tailSequence
                                          , configTextureDir
-                                         , configObjFilename
+                                         , configObjFilenames
                                          , configMtlFilename
                                          , configTextureConfigYaml
+                                         , materialName
+                                         , materialSpecularExp
+                                         , materialAmbientColor
+                                         , materialDiffuseColor
+                                         , materialSpecularColor
                                          , tcWidth
                                          , tcHeight
                                          , tcImageBase64
@@ -109,18 +141,21 @@ import           Prelude hiding ( elem )
 
 parse :: Config -> IO Sequence
 parse config = do
-    let Config framesDir textureDir objFilename mtlFilename textureConfigYaml = config
-    materialMapMaterial <- getMaterial framesDir mtlFilename
-    objMap <- getObjMap framesDir objFilename
+    let Config textureDir objFilenames mtlFilename textureConfigYaml = config
+    materialMapMaterial <- getMaterial mtlFilename
+    frames <- flip mapM objFilenames $ \objFilename ->
+        parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename
+    pure $ Sequence frames
+
+parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename = do
+    objMap <- getObjMap objFilename
     textureMap <- getTextureMap (T.pack textureDir) textureConfigYaml
 
     let objNames = Dmap.keys objMap
         objNamesTex = Dmap.keys textureMap
-    putStrLn $ printf "object names (parsed): %s" (show objNames)
-    putStrLn $ printf "object names (texture config): %s" (show objNamesTex)
 
     objs <- mapListM (makeObj textureMap materialMapMaterial) objMap
-    pure $ Sequence objs
+    pure $ SequenceFrame objs
 
 makeObj :: TextureMap -> MaterialMapMaterial -> ObjName -> MaterialMapCoords -> IO Obj
 makeObj textureMap mtlMapMaterial objName mtlMapCoords = do
@@ -142,19 +177,19 @@ mapListM f m = mapM map' $ Dmap.keys m where
     map' key = f key $ val' key
     val' key = fromJust $ Dmap.lookup key m
 
-getObjMap :: FilePath -> FilePath -> IO ObjMap
-getObjMap framesDir objFilename = prepare' <$> parseObj framesDir objFilename where
+getObjMap :: FilePath -> IO ObjMap
+getObjMap objFilename = prepare' <$> parseObj objFilename where
     prepare' = either error' prepareFrame
     error' = error . printf "bad parse: %s"
 
-parseObj :: FilePath -> FilePath -> IO (Either String WavefrontOBJ)
-parseObj framesDir objFilename = do
-    let file = framesDir <> objFilename
+parseObj :: FilePath -> IO (Either String WavefrontOBJ)
+parseObj objFilename = do
+    let file = objFilename
     parseFile file
 
-getMaterial :: FilePath -> FilePath -> IO MaterialMapMaterial
-getMaterial framesDir mtlFilename = do
-    mtl <- readFile $ framesDir <> "/" <> mtlFilename
+getMaterial :: FilePath -> IO MaterialMapMaterial
+getMaterial mtlFilename = do
+    mtl <- readFile mtlFilename
     Pmtl.parse mtl :: IO MaterialMapMaterial
 
 getTextureMap :: Text -> ByteString -> IO TextureMap

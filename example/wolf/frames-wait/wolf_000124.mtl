@@ -1,0 +1,68 @@
+# Blender MTL File: 'wolf.blend'
+# Material Count: 6
+
+newmtl Material
+Ns 96.078431
+Ka 1.000000 1.000000 1.000000
+Kd 0.472432 0.472432 0.472432
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 1
+map_Kd /home/fritz/de/src/fish/mesh-obj-gles/example/AppData/Local/Temp/AppData/Local/Temp/Rar$DIa0.388/02_wolf/wolf col.jpg
+
+newmtl Material.007
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.071062 0.071062 0.071062
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 1
+
+newmtl claws
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.167357 0.159407 0.136949
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 1
+
+newmtl eyes
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 1
+map_Kd -s 0.800000 0.800000 1.000000 /home/fritz/de/src/fish/mesh-obj-gles/example/AppData/Local/Temp/AppData/Local/Temp/Rar$DIa0.388/02_wolf/eye_2.jpg
+map_Ke -s 0.800000 0.800000 1.000000 /home/fritz/de/src/fish/mesh-obj-gles/example/AppData/Local/Temp/AppData/Local/Temp/Rar$DIa0.388/02_wolf/eye_2.jpg
+
+newmtl fur
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.026142 0.022739 0.020186
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 0.000000
+illum 1
+map_Kd /home/fritz/de/src/fish/mesh-obj-gles/example/AppData/Local/Temp/AppData/Local/Temp/Rar$DIa0.388/02_wolf/wolf col.jpg
+map_d /home/fritz/de/src/fish/mesh-obj-gles/example/AppData/Local/Temp/AppData/Local/Temp/Rar$DIa0.388/02_wolf/fella3.jpg
+
+newmtl teeth
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.167357 0.159407 0.136949
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 1
+map_Kd /home/fritz/de/src/fish/mesh-obj-gles/example/AppData/Local/Temp/AppData/Local/Temp/Rar$DIa0.388/02_wolf/fella3.jpg
