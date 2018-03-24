@@ -42,8 +42,8 @@ main = do
     objFilenames' <- sort <$> globDir1 (Sfg.compile objFilenameGlob) framesDir'
     print objFilenames'
     let config = Config textureDir' objFilenames' mtlFilename' textureConfigYaml
-    p <- parse config
-    printSeq p
+    (wolfSeq, textureMap) <- parse config
+    printSeq wolfSeq
     pure ()
 
 printSeq sequ = do

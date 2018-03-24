@@ -159,7 +159,7 @@ data Vertex2 = Vertex2 Float Float deriving Show
 data Vertex3 = Vertex3 Float Float Float deriving Show
 data Vertex4 = Vertex4 Float Float Float Float deriving Show
 
-type TextureMap = Map ObjName TextureConfig
+type TextureMap = Map MtlName TextureConfig
 
 data TextureConfigI = TextureConfigI [TextureConfigIT] deriving Show
 

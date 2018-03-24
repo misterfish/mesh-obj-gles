@@ -20,8 +20,12 @@ module Codec.MeshObjGles.Parse ( Config (Config)
                                , materialAmbientColor
                                , materialDiffuseColor
                                , materialSpecularColor
+                               , materialTexture
                                , makeInfiniteSequence
                                , tailSequence
+                               , tcImageBase64
+                               , tcHeight
+                               , tcWidth
                                , parse ) where
 
 import           Data.ByteString as BS ( ByteString )
@@ -124,6 +128,7 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , materialAmbientColor
                                          , materialDiffuseColor
                                          , materialSpecularColor
+                                         , materialTexture
                                          , tcWidth
                                          , tcHeight
                                          , tcImageBase64
@@ -137,14 +142,14 @@ import qualified Codec.MeshObjGles.ParseMtl as Pmtl  ( parse
 
 import           Prelude hiding ( elem )
 
-parse :: Config -> IO Sequence
+parse :: Config -> IO (Sequence, TextureMap)
 parse config = do
     let Config textureDir objFilenames mtlFilename textureConfigYaml = config
     textureMap <- getTextureMap textureDir textureConfigYaml
     materialMapMaterial <- getMaterialMap mtlFilename textureMap
     frames <- flip mapM objFilenames $ \objFilename ->
         parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename
-    pure $ Sequence frames
+    pure $ (Sequence frames, textureMap)
 
 parseFrame' :: FilePath -> MaterialMapMaterial -> ByteString -> FilePath -> IO SequenceFrame
 parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename = do
