@@ -5,7 +5,6 @@ module Codec.MeshObjGles.Parse ( Config (Config)
                                , TextureConfig (TextureConfig)
                                , Sequence (Sequence)
                                , SequenceFrame (SequenceFrame)
-                               , Obj (Obj)
                                , Texture (Texture)
                                , Burst (Burst)
                                , Vertices
@@ -104,9 +103,8 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , TextureConfigIT
                                          , TextureConfig (TextureConfig)
                                          , TextureMap
-                                         , Obj (Obj)
                                          , Burst (Burst)
-                                         , MaterialMapCoords
+                                         , MaterialMapCoordsI
                                          , MaterialMapMaterial
                                          , Material
                                          , ObjMap
@@ -132,7 +130,7 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , tciImagePath
                                          , tciWidth
                                          , tciHeight
-                                         , tciObjectName )
+                                         , tciMaterialName )
 
 import qualified Codec.MeshObjGles.ParseMtl as Pmtl  ( parse
                                                      , start )
@@ -142,30 +140,24 @@ import           Prelude hiding ( elem )
 parse :: Config -> IO Sequence
 parse config = do
     let Config textureDir objFilenames mtlFilename textureConfigYaml = config
-    materialMapMaterial <- getMaterial mtlFilename
+    textureMap <- getTextureMap textureDir textureConfigYaml
+    materialMapMaterial <- getMaterialMap mtlFilename textureMap
     frames <- flip mapM objFilenames $ \objFilename ->
         parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename
     pure $ Sequence frames
 
+parseFrame' :: FilePath -> MaterialMapMaterial -> ByteString -> FilePath -> IO SequenceFrame
 parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename = do
     objMap <- getObjMap objFilename
-    textureMap <- getTextureMap (T.pack textureDir) textureConfigYaml
 
     let objNames = Dmap.keys objMap
-        objNamesTex = Dmap.keys textureMap
+        bursts = concat . mapList (makeBursts materialMapMaterial) $ objMap
+    pure $ SequenceFrame bursts
 
-    objs <- mapListM (makeObj textureMap materialMapMaterial) objMap
-    pure $ SequenceFrame objs
-
-makeObj :: TextureMap -> MaterialMapMaterial -> ObjName -> MaterialMapCoords -> IO Obj
-makeObj textureMap mtlMapMaterial objName mtlMapCoords = do
-    let bursts' = prepareBursts mtlMapMaterial mtlMapCoords
-        textureConfig' = textureMap & fromJust . Dmap.lookup objName
-    let width' = tcWidth textureConfig'
-        height' = tcHeight textureConfig'
-        tcImageBase64' = tcImageBase64 textureConfig'
-        texture' = Texture tcImageBase64' width' height'
-    pure $ Obj texture' bursts'
+-- Prepare list of Burst for a given blender object.
+makeBursts :: MaterialMapMaterial -> ObjName -> MaterialMapCoordsI -> [Burst]
+makeBursts mtlMapMaterial objName mtlMapCoords =
+    prepareBursts mtlMapMaterial mtlMapCoords
 
 mapList :: Ord a => (a -> b -> c) -> Map a b -> [c]
 mapList f m = map map' $ Dmap.keys m where
@@ -187,17 +179,17 @@ parseObj objFilename = do
     let file = objFilename
     parseFile file
 
-getMaterial :: FilePath -> IO MaterialMapMaterial
-getMaterial mtlFilename = do
+getMaterialMap :: FilePath -> TextureMap -> IO MaterialMapMaterial
+getMaterialMap mtlFilename textureMap = do
     mtl <- readFile mtlFilename
-    Pmtl.parse mtl :: IO MaterialMapMaterial
+    Pmtl.parse mtl textureMap
 
-getTextureMap :: Text -> ByteString -> IO TextureMap
+getTextureMap :: FilePath -> ByteString -> IO TextureMap
 getTextureMap textureDir textureConfigYaml = maybe err' (prepareTextureConfig textureDir) textureConfig' where
     err' = error "Couldn't decode texture config yaml"
     textureConfig' = Y.decode textureConfigYaml
 
-prepareBursts :: MaterialMapMaterial -> MaterialMapCoords -> [Burst]
+prepareBursts :: MaterialMapMaterial -> MaterialMapCoordsI -> [Burst]
 prepareBursts materialMapMaterial materialMapCoords = objToBurst' materialMapCoords where
     objToBurst' mmc = map (toBurst materialMapMaterial) (objList' mmc)
     objList' mmc = Dmap.toList mmc
@@ -270,12 +262,12 @@ toVertex parsed (FaceIndex locIndex texCoordIndexMb norIndexMb) = v where
     lookupTexCoord x = verl2 $ [texcoordR, texcoordS] `asterisk` lookup' objTexCoords x
     lookupNormal x   = verl3 $ [norX, norY, norZ]     `asterisk` lookup' objNormals x
 
-prepareTextureConfig :: Text -> TextureConfigI -> IO TextureMap
+prepareTextureConfig :: FilePath -> TextureConfigI -> IO TextureMap
 prepareTextureConfig textureDir' (TextureConfigI tcs) = foldM prepare' Dmap.empty tcs where
     prepare' acc tci = do
         let imagePath' = (<> tciImagePath tci) textureDir'
             width' = tciWidth tci
             height' = tciHeight tci
-        base64' <- BS.readFile $ T.unpack imagePath'
+        base64' <- BS.readFile imagePath'
         let tc = TextureConfig base64' width' height'
-        pure $ acc & Dmap.insert (tciObjectName tci) tc
+        pure $ acc & Dmap.insert (tciMaterialName tci) tc

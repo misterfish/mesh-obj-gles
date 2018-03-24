@@ -1,7 +1,7 @@
 module Codec.MeshObjGles.ParseMtl ( parse
                 , start ) where
 
-import           Data.Text as T ( pack )
+import           Data.Text as T ( Text, pack )
 import           Data.Foldable ( foldl' )
 import           Data.Function ( (&) )
 import           Data.Functor.Identity ( Identity )
@@ -16,11 +16,11 @@ import qualified Data.Vector as DV ( (++)
                                    , empty
                                    )
 
-import           Data.Map as DM ( Map )
-import qualified Data.Map as DM ( empty
-                                , insert
-                                , fromList
-                                , lookup )
+import           Data.Map as Dmap ( Map )
+import qualified Data.Map as Dmap ( empty
+                                  , insert
+                                  , fromList
+                                  , lookup )
 
 import           Text.Printf ( printf )
 import           Text.Parsec ( (<|>)
@@ -55,50 +55,66 @@ import           Text.Parsec ( (<|>)
 import qualified Text.ParserCombinators.Parsec as P ( parse )
 
 import Codec.MeshObjGles.ParseUtil ( trim )
-import Codec.MeshObjGles.Types ( MaterialMapCoords
-             , MaterialMapMaterial
+import Codec.MeshObjGles.Types
+             ( MaterialMapMaterial
              , Material (Material)
              , Vertex2 (Vertex2)
              , Vertex3 (Vertex3)
+             , TextureMap
+             , Texture (Texture)
+             , tcWidth
+             , tcHeight
+             , tcImageBase64
              , materialName
              , materialSpecularExp
              , materialAmbientColor
              , materialDiffuseColor
-             , materialSpecularColor
-             )
+             , materialSpecularColor )
 
 -- runParserT: generic parser with arbitrary state over arbitrary monad.
 
 type Parser a = ParsecT String () IO a
 
-parse :: String -> IO MaterialMapMaterial
-parse s = either' <$> parseInput start () s where
+parse :: String -> TextureMap -> IO MaterialMapMaterial
+parse str textureMap = either' <$> parseInput (start textureMap) () str where
     either' = either error' id
     error' x = error $ "bad parse: " <> show x
 
 parseInput :: Parser a -> () -> String -> IO (Either ParseError a)
 parseInput start' initState = runParserT start' initState "(no filename)" . trim
 
-start :: Parser MaterialMapMaterial
-start = do
+start :: TextureMap -> Parser MaterialMapMaterial
+start textureMap = do
     optional comments
     many spnl
-    ms <- material `sepBy` (nl >> nl)
-    let fold' acc m = acc & DM.insert (materialName m) m
-    pure $ foldl' fold' DM.empty ms
+    ms <- (material textureMap) `sepBy` (nl >> nl)
+    let fold' acc m = acc & Dmap.insert (materialName m) m
+    pure $ foldl' fold' Dmap.empty ms
 
 comments = comment `endBy` nl
 comment = char '#' >> ( many $ noneOf "\n" )
 
 nl = char '\n'
-material = do
+
+material :: TextureMap -> Parser Material
+material textureMap = do
     name <- string "newmtl" *> many1 sp *> many1 notNl <* nl
     se <- string "Ns " *> float <* nl
     ac <- getVertex3 "Ka" <* nl
     dc <- getVertex3 "Kd" <* nl
     sc <- getVertex3 "Ks" <* nl
+    let texMb = lookupTexture textureMap name
     manyTill anyToken sepOrEof
-    pure $ Material (T.pack name) se ac dc sc where
+    pure $ Material (T.pack name) se ac dc sc texMb where
+
+lookupTexture :: TextureMap -> String -> Maybe Texture
+lookupTexture textureMap textureName = do
+    let textureNameTxt = T.pack textureName
+    textureConfig' <- textureMap & Dmap.lookup textureNameTxt
+    let width' = tcWidth textureConfig'
+        height' = tcHeight textureConfig'
+        tcImageBase64' = tcImageBase64 textureConfig'
+    pure $ Texture tcImageBase64' width' height'
 
 sepOrEof = try (void sep') <|> try eof where
     sep' = try . lookAhead $ string "\n\n"

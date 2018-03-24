@@ -8,11 +8,12 @@ also ignore the wolf_1, wolf_2 etc. .blend files, which are not necessary.
 • animation, apply modifiers, include edges, write normals, include uvs,
 write materials, triangulate faces, objects as obj groups
 
-• need to make a file mapping textures to objects (.obj doesn't handle this)
+• need to make a file mapping textures to materials (.obj doesn't handle this)
 
 
 
-mystery: how to export a non-uniform texture from blender. maybe not
-possible.
-(there is a file path encoded in the .mtl file, but blender doesn't export
-this file; not even sure if it honors the file internally)
+
+materials can use textures in a number of ways (e.g. map_Kd, map_d, etc.)
+we ignore this and simply use the texture as an ordinary image to be drawn
+on the polygon (can depend on e.g. decal mode, modulate mode, insofar as
+these are still supported by GLES)
