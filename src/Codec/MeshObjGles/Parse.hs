@@ -149,6 +149,9 @@ parse config = do
     materialMapMaterial <- getMaterialMap mtlFilename textureMap
     frames <- flip mapM objFilenames $ \objFilename ->
         parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename
+    -- writeFile "/dev/null" $ show frames
+    -- print . take 1 $ show frames
+    -- print $ seq frames "hello"
     pure $ (Sequence frames, textureMap)
 
 parseFrame' :: FilePath -> MaterialMapMaterial -> ByteString -> FilePath -> IO SequenceFrame
@@ -175,7 +178,10 @@ mapListM f m = mapM map' $ Dmap.keys m where
     val' key = fromJust $ Dmap.lookup key m
 
 getObjMap :: FilePath -> IO ObjMap
-getObjMap objFilename = prepare' <$> parseObj objFilename where
+-- getObjMap objFilename = prepare' <$> parseObj objFilename where
+getObjMap objFilename = do
+    parsed' <- parseObj objFilename
+    pure . prepare' $ parsed' where
     prepare' = either error' prepareFrame
     error' = error . printf "bad parse: %s"
 

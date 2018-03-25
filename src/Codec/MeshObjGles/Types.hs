@@ -96,6 +96,7 @@ module Codec.MeshObjGles.Types ( Config (Config)
                                , tailSequence
                                ) where
 
+import           GHC.Generics ( Generic, Rep )
 import           Text.Printf ( printf )
 import           Data.ByteString as BS ( ByteString )
 import qualified Data.ByteString as BS ( take, unpack )
@@ -106,6 +107,11 @@ import qualified Data.Map as DM ( empty
                                 , fromList
                                 , lookup )
 import           Data.Vector ( Vector )
+import           Control.DeepSeq ( NFData
+                                 , deepseq
+                                 , rnf )
+-- import           Control.DeepSeq.Generics ( genericRnf )
+--                                  , GNFData )
 
 import           Data.Yaml as Y ( (.:)
                                 , FromJSON
@@ -119,21 +125,23 @@ data Config = Config { configTextureDir :: FilePath
                      , configMtlFilename :: FilePath
                      , configTextureConfigYaml :: ByteString }
 
-data Sequence = Sequence [SequenceFrame] deriving Show
-data SequenceFrame  = SequenceFrame [Burst] deriving Show
+data Sequence = Sequence ![SequenceFrame] deriving Show
+data SequenceFrame  = SequenceFrame ![Burst] deriving Show
 
 type MaterialMapMaterial = Map MtlName Material
 
-data Material = Material { materialName :: MtlName
-                         , materialSpecularExp :: Float
-                         , materialAmbientColor :: Vertex3
-                         , materialDiffuseColor :: Vertex3
-                         , materialSpecularColor :: Vertex3
-                         , materialTexture :: Maybe Texture }
+type MaybeTexture = Maybe Texture
+
+data Material = Material { materialName :: !MtlName
+                         , materialSpecularExp :: !Float
+                         , materialAmbientColor :: !Vertex3
+                         , materialDiffuseColor :: !Vertex3
+                         , materialSpecularColor :: !Vertex3
+                         , materialTexture :: !MaybeTexture }
                          deriving Show
 
 type PngBase64 = ByteString
-data Texture   = Texture PngBase64 Int Int
+data Texture   = Texture !PngBase64 !Int !Int
 
 instance Show Texture where
     show (Texture pngBase64 width height) = printf "width: %d, height: %d, base64: %s [...]"
@@ -141,7 +149,10 @@ instance Show Texture where
         height
         (show . BS.take 10 $ pngBase64)
 
-data Burst     = Burst Vertices (Maybe TexCoords) (Maybe Normals) Material
+type MaybeTexCoords = Maybe TexCoords
+type MaybeNormals = Maybe Normals
+
+data Burst     = Burst !Vertices !MaybeTexCoords !MaybeNormals !Material
     deriving Show
 
 type Vertices  = Vector Vertex3
@@ -155,24 +166,24 @@ type MaterialMapCoordsI = Map MtlName Coords
 
 type Coords  = (Maybe Vertices, Maybe TexCoords, Maybe Normals)
 
-data Vertex2 = Vertex2 Float Float deriving Show
-data Vertex3 = Vertex3 Float Float Float deriving Show
-data Vertex4 = Vertex4 Float Float Float Float deriving Show
+data Vertex2 = Vertex2 !Float !Float deriving Show
+data Vertex3 = Vertex3 !Float !Float !Float deriving Show
+data Vertex4 = Vertex4 !Float !Float !Float !Float deriving Show
 
 type TextureMap = Map MtlName TextureConfig
 
-data TextureConfigI = TextureConfigI [TextureConfigIT] deriving Show
+data TextureConfigI = TextureConfigI ![TextureConfigIT] deriving Show
 
-data TextureConfigIT = TextureConfigIT { tciMaterialName :: MtlName
-                                       , tciImagePath :: FilePath
-                                       , tciWidth :: Int
-                                       , tciHeight :: Int }
+data TextureConfigIT = TextureConfigIT { tciMaterialName :: !MtlName
+                                       , tciImagePath :: !FilePath
+                                       , tciWidth :: !Int
+                                       , tciHeight :: !Int }
                                        deriving Show
 
 -- like TextureConfigIT but with the image loaded & encoded.
-data TextureConfig = TextureConfig { tcImageBase64 :: ByteString
-                                   , tcWidth :: Int
-                                   , tcHeight :: Int }
+data TextureConfig = TextureConfig { tcImageBase64 :: !ByteString
+                                   , tcWidth :: !Int
+                                   , tcHeight :: !Int }
 
 instance FromJSON TextureConfigI where
     parseJSON (Y.Object v) = do
@@ -194,3 +205,30 @@ makeInfiniteSequence (Sequence s) = Sequence $ g s where
 
 tailSequence :: Sequence -> Sequence
 tailSequence (Sequence s) = Sequence $ tail s
+
+-- Provide simple Generic/NFData instances so the consumer can force deep
+-- evaluation with deepseq.
+
+instance Generic Sequence
+instance NFData Sequence where
+    rnf (Sequence frames) = frames `deepseq` ()
+instance Generic SequenceFrame
+instance NFData SequenceFrame where
+    rnf (SequenceFrame bursts) = bursts `deepseq` ()
+instance Generic Burst
+instance NFData Burst where
+    rnf (Burst vertices texCoordsMb normalsMb material) =
+        vertices `deepseq` texCoordsMb `deepseq` normalsMb `deepseq` material `deepseq` ()
+instance Generic Vertex2
+instance NFData Vertex2 where
+    rnf (Vertex2 a b) = a `deepseq` b `deepseq` ()
+instance Generic Vertex3
+instance NFData Vertex3 where
+    rnf (Vertex3 a b c) = a `deepseq` b `deepseq` c `deepseq` ()
+instance Generic Material
+instance NFData Material where
+    rnf (Material n se ac dc sc mt) =
+        n `deepseq` se `deepseq` ac `deepseq` dc `deepseq` sc `deepseq` mt `deepseq` ()
+instance Generic Texture
+instance NFData Texture where
+    rnf (Texture png w h) = png `deepseq` w `deepseq` h `deepseq` ()
