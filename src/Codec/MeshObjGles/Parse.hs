@@ -2,6 +2,9 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 module Codec.MeshObjGles.Parse ( Config (Config)
+                               , ConfigTextureSpec (ConfigTextureDir)
+                               , ConfigObjectSpec (ConfigObjectFilenames)
+                               , ConfigMtlSpec (ConfigMtlFilePath)
                                , TextureConfig (TextureConfig)
                                , Sequence (Sequence)
                                , SequenceFrame (SequenceFrame)
@@ -30,6 +33,7 @@ module Codec.MeshObjGles.Parse ( Config (Config)
 
 import           Data.ByteString as BS ( ByteString )
 import qualified Data.ByteString as BS ( readFile )
+import qualified Data.ByteString.Char8 as BS8 ( pack )
 import           Data.Text as T ( Text )
 import qualified Data.Text as T ( pack, unpack )
 import           Data.Function ( (&) )
@@ -55,7 +59,8 @@ import qualified Data.Vector as Dvec ( (++)
 import           Text.RawString.QQ ( r )
 import           Data.Yaml as Y ( (.:)
                                 , FromJSON
-                                , decode
+                                , decodeEither'
+                                , prettyPrintParseException
                                 , parseJSON )
 import qualified Data.Yaml as Y ( Value (Object)
                                 , Parser )
@@ -97,6 +102,9 @@ import           Codec.MeshObjGles.ParseUtil ( frint
                                              , thd3 )
 
 import           Codec.MeshObjGles.Types ( Config (Config)
+                                         , ConfigTextureSpec (ConfigTextureDir)
+                                         , ConfigObjectSpec (ConfigObjectFilenames)
+                                         , ConfigMtlSpec (ConfigMtlFilePath)
                                          , Coords
                                          , Sequence (Sequence)
                                          , SequenceFrame (SequenceFrame)
@@ -106,6 +114,7 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , TextureConfigI (TextureConfigI)
                                          , TextureConfigIT
                                          , TextureConfig (TextureConfig)
+                                         , TcitImageSpec (TcitImageFilePath, TcitImageBase64)
                                          , TextureMap
                                          , Burst (Burst)
                                          , MaterialMapCoordsI
@@ -119,9 +128,8 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , Vertex3 (Vertex3)
                                          , makeInfiniteSequence
                                          , tailSequence
-                                         , configTextureDir
-                                         , configObjFilenames
-                                         , configMtlFilename
+                                         , configObjSpec
+                                         , configMtlSpec
                                          , configTextureConfigYaml
                                          , materialName
                                          , materialSpecularExp
@@ -132,7 +140,7 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , tcWidth
                                          , tcHeight
                                          , tcImageBase64
-                                         , tciImagePath
+                                         , tciImageSpec
                                          , tciWidth
                                          , tciHeight
                                          , tciMaterialName )
@@ -144,18 +152,21 @@ import           Prelude hiding ( elem )
 
 parse :: Config -> IO (Sequence, TextureMap)
 parse config = do
-    let Config textureDir objFilenames mtlFilename textureConfigYaml = config
-    textureMap <- getTextureMap textureDir textureConfigYaml
+    let Config objSpec mtlSpec textureConfigYaml = config
+        objFilenames
+          | ConfigObjectFilenames fps' <- objSpec = fps'
+          | otherwise = error "impl obj spec"
+        mtlFilename
+          | ConfigMtlFilePath fp' <- mtlSpec = fp'
+          | otherwise = error "impl mtl spec"
+    textureMap <- getTextureMap textureConfigYaml
     materialMapMaterial <- getMaterialMap mtlFilename textureMap
     frames <- flip mapM objFilenames $ \objFilename ->
-        parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename
-    -- writeFile "/dev/null" $ show frames
-    -- print . take 1 $ show frames
-    -- print $ seq frames "hello"
+        parseFrame' materialMapMaterial textureConfigYaml objFilename
     pure $ (Sequence frames, textureMap)
 
-parseFrame' :: FilePath -> MaterialMapMaterial -> ByteString -> FilePath -> IO SequenceFrame
-parseFrame' textureDir materialMapMaterial textureConfigYaml objFilename = do
+parseFrame' :: MaterialMapMaterial -> ByteString -> FilePath -> IO SequenceFrame
+parseFrame' materialMapMaterial textureConfigYaml objFilename = do
     objMap <- getObjMap objFilename
 
     let objNames = Dmap.keys objMap
@@ -195,10 +206,10 @@ getMaterialMap mtlFilename textureMap = do
     mtl <- readFile mtlFilename
     Pmtl.parse mtl textureMap
 
-getTextureMap :: FilePath -> ByteString -> IO TextureMap
-getTextureMap textureDir textureConfigYaml = maybe err' (prepareTextureConfig textureDir) textureConfig' where
-    err' = error "Couldn't decode texture config yaml"
-    textureConfig' = Y.decode textureConfigYaml
+getTextureMap :: ByteString -> IO TextureMap
+getTextureMap textureConfigYaml = either err' prepareTextureConfig textureConfig' where
+    err' err = error $ "Couldn't decode texture config yaml " <> prettyPrintParseException err
+    textureConfig' = Y.decodeEither' textureConfigYaml
 
 prepareBursts :: MaterialMapMaterial -> MaterialMapCoordsI -> [Burst]
 prepareBursts materialMapMaterial materialMapCoords = objToBurst' materialMapCoords where
@@ -273,12 +284,16 @@ toVertex parsed (FaceIndex locIndex texCoordIndexMb norIndexMb) = v where
     lookupTexCoord x = verl2 $ [texcoordR, texcoordS] `asterisk` lookup' objTexCoords x
     lookupNormal x   = verl3 $ [norX, norY, norZ]     `asterisk` lookup' objNormals x
 
-prepareTextureConfig :: FilePath -> TextureConfigI -> IO TextureMap
-prepareTextureConfig textureDir' (TextureConfigI tcs) = foldM prepare' Dmap.empty tcs where
+prepareTextureConfig :: TextureConfigI -> IO TextureMap
+prepareTextureConfig (TextureConfigI tcs) = foldM prepare' Dmap.empty tcs where
     prepare' acc tci = do
-        let imagePath' = (<> tciImagePath tci) textureDir'
+        let imageSpec' = tciImageSpec tci
+            base64IO'
+              | TcitImageFilePath fp <- imageSpec' = slurp' fp
+              | TcitImageBase64 b64 <- imageSpec' = pure $ BS8.pack b64
+            slurp' = BS.readFile
             width' = tciWidth tci
             height' = tciHeight tci
-        base64' <- BS.readFile imagePath'
+        base64' <- base64IO'
         let tc = TextureConfig base64' width' height'
         pure $ acc & Dmap.insert (tciMaterialName tci) tc

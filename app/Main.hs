@@ -7,6 +7,8 @@ import           Text.Printf ( printf )
 import           Data.Foldable ( foldl' )
 import           Control.Applicative ( empty )
 import           Data.ByteString as BS ( ByteString )
+import qualified Data.ByteString as BS ( pack )
+import qualified Data.ByteString.Char8 as BS8 ( pack )
 import           System.Directory ( getCurrentDirectory )
 import           Data.Monoid ( (<>) )
 import           Control.Monad ( join )
@@ -18,6 +20,9 @@ import           System.FilePath.Glob as Sfg ( globDir1 )
 import qualified System.FilePath.Glob as Sfg ( compile )
 
 import           Codec.MeshObjGles.Types ( Config (Config)
+                                         , ConfigTextureSpec (ConfigTextureDir)
+                                         , ConfigObjectSpec (ConfigObjectFilenames)
+                                         , ConfigMtlSpec (ConfigMtlFilePath)
                                          , Sequence (Sequence)
                                          , SequenceFrame (SequenceFrame)
                                          , Burst (Burst)
@@ -28,7 +33,7 @@ import           Codec.MeshObjGles.Types ( Config (Config)
 import           Codec.MeshObjGles.Parse ( parse )
 
 binDir = getCurrentDirectory
-framesDir = (<> "/example/wolf/frames-wait/") <$> binDir
+framesDir = (<> "/example/wolf/frames-wait") <$> binDir
 textureDir = (<> "/example/wolf/textures/") <$> binDir
 
 objFilenameGlob = "wolf_00010*.obj"
@@ -41,7 +46,11 @@ main = do
     mtlFilename' <- mtlFilename
     objFilenames' <- sort <$> globDir1 (Sfg.compile objFilenameGlob) framesDir'
     print objFilenames'
-    let config = Config textureDir' objFilenames' mtlFilename' textureConfigYaml
+    textureConfigYaml' <- textureConfigYaml textureDir'
+    let config = Config
+            (ConfigObjectFilenames objFilenames')
+            (ConfigMtlFilePath mtlFilename')
+            textureConfigYaml'
     (wolfSeq, textureMap) <- parse config
     printSeq wolfSeq
     pure ()
@@ -76,19 +85,22 @@ printMaterial pref material = do
 -- Kd: diffuse texture map
 -- Ka: alpha texture map
 -- Ke: emissive texture map
-textureConfigYaml :: ByteString
-textureConfigYaml = [QQ.r|
+textureConfigYaml :: FilePath -> IO ByteString
+textureConfigYaml textureDir' = pure yaml' where
+    textureDir'' = BS8.pack textureDir'
+    yaml' = [QQ.r|
 textures:
   - materialName: Material
-    image: body.png.base64
+    imageFile: |] <> textureDir'' <> [QQ.r|body.png.base64
     width: 4096
     height: 2048
   - materialName: eyes
-    image: eyes-2.png.base64
+    imageFile: |] <> textureDir'' <> [QQ.r|eyes-2.png.base64
     width: 256
     height: 256
   - materialName: fur
-    image: fur.png.base64
+    # imageFile: |] <> textureDir'' <> [QQ.r|fur.png.base64
+    imageBase64: ABCDABCDABCDABCD
     width: 256
     height: 256
 |]

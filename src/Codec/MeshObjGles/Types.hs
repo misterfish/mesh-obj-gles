@@ -55,6 +55,9 @@
 -- separately.
 
 module Codec.MeshObjGles.Types ( Config (Config)
+                               , ConfigTextureSpec (ConfigTextureDir)
+                               , ConfigObjectSpec (ConfigObjectFilenames)
+                               , ConfigMtlSpec (ConfigMtlFilePath)
                                , MaterialMapCoordsI
                                , ObjMap
                                , MaterialMapMaterial
@@ -73,11 +76,11 @@ module Codec.MeshObjGles.Types ( Config (Config)
                                , TextureConfigI (TextureConfigI)
                                , TextureConfigIT (TextureConfigIT)
                                , TextureConfig (TextureConfig)
+                               , TcitImageSpec (TcitImageFilePath, TcitImageBase64)
                                , Sequence (Sequence)
                                , SequenceFrame (SequenceFrame)
-                               , configTextureDir
-                               , configObjFilenames
-                               , configMtlFilename
+                               , configObjSpec
+                               , configMtlSpec
                                , configTextureConfigYaml
                                , materialName
                                , materialSpecularExp
@@ -85,7 +88,7 @@ module Codec.MeshObjGles.Types ( Config (Config)
                                , materialDiffuseColor
                                , materialSpecularColor
                                , materialTexture
-                               , tciImagePath
+                               , tciImageSpec
                                , tciWidth
                                , tciHeight
                                , tciMaterialName
@@ -107,12 +110,16 @@ import qualified Data.Map as DM ( empty
                                 , fromList
                                 , lookup )
 import           Data.Vector ( Vector )
+import           Debug.Trace ( trace )
+import           Data.Monoid ( (<>) )
+import           Control.Applicative ( (<|>) )
 import           Control.DeepSeq ( NFData
                                  , deepseq
                                  , rnf )
 -- import           Control.DeepSeq.Generics ( genericRnf )
 --                                  , GNFData )
 
+import Control.Monad.IO.Class ( liftIO )
 import           Data.Yaml as Y ( (.:)
                                 , FromJSON
                                 , parseJSON
@@ -120,10 +127,13 @@ import           Data.Yaml as Y ( (.:)
 import qualified Data.Yaml as Y ( Value (Object)
                                 , Parser )
 
-data Config = Config { configTextureDir :: FilePath
-                     , configObjFilenames :: [FilePath]
-                     , configMtlFilename :: FilePath
+data Config = Config { configObjSpec :: ConfigObjectSpec
+                     , configMtlSpec :: ConfigMtlSpec
                      , configTextureConfigYaml :: ByteString }
+
+data ConfigTextureSpec = ConfigTextureDir FilePath
+data ConfigObjectSpec = ConfigObjectFilenames [FilePath]
+data ConfigMtlSpec = ConfigMtlFilePath FilePath
 
 data Sequence = Sequence ![SequenceFrame] deriving Show
 data SequenceFrame  = SequenceFrame ![Burst] deriving Show
@@ -175,12 +185,20 @@ type TextureMap = Map MtlName TextureConfig
 data TextureConfigI = TextureConfigI ![TextureConfigIT] deriving Show
 
 data TextureConfigIT = TextureConfigIT { tciMaterialName :: !MtlName
-                                       , tciImagePath :: !FilePath
+                                       , tciImageSpec :: !TcitImageSpec
                                        , tciWidth :: !Int
                                        , tciHeight :: !Int }
                                        deriving Show
 
--- like TextureConfigIT but with the image loaded & encoded.
+data TcitImageSpec = TcitImageFilePath !FilePath
+                   | TcitImageBase64 !String
+                   | TcitDummy String -- silly way to show better error message
+
+instance Show TcitImageSpec where
+    show (TcitImageFilePath fp') = fp'
+    show (TcitImageBase64 b64') = take 10 b64' <> " ..."
+
+-- like TextureConfigIT but with the image loaded for sure.
 data TextureConfig = TextureConfig { tcImageBase64 :: !ByteString
                                    , tcWidth :: !Int
                                    , tcHeight :: !Int }
@@ -192,9 +210,16 @@ instance FromJSON TextureConfigI where
 
 instance FromJSON TextureConfigIT where
     parseJSON (Y.Object v) = do
+        let trace' i = trace ("trace: " <> show i) i
+        -- img <- (v .: "crimage") <|> (v .: "image") :: Y.Parser Friend
+        -- _ <- pure . seq . trace' $ img
+        -- liftIO . putStrLn $ printf "hello %s" (show img)
         TextureConfigIT <$>
             v .: "materialName" <*>
-            v .: "image" <*>
+            (TcitImageFilePath <$> v .: "imageFile"
+            <|> TcitImageBase64 <$> v .: "imageBase64"
+            <|> TcitDummy <$> v .: "imageFile or imageBase64"
+            ) <*>
             v .: "width" <*>
             v .: "height"
     parseJSON _ = error "invalid type for parseJSON TextureConfigIT"
