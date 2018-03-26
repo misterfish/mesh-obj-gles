@@ -21,8 +21,9 @@ import qualified System.FilePath.Glob as Sfg ( compile )
 
 import           Codec.MeshObjGles.Types ( Config (Config)
                                          , ConfigTextureSpec (ConfigTextureDir)
-                                         , ConfigObjectSpec (ConfigObjectFilenames)
-                                         , ConfigMtlSpec (ConfigMtlFilePath)
+                                         , ConfigObjectSpec (ConfigObjectSpec)
+                                         , ConfigObjectSpecItem (ConfigObjectFilePath, ConfigObjectSource)
+                                         , ConfigMtlSpec (ConfigMtlFilePath, ConfigMtlSource)
                                          , Sequence (Sequence)
                                          , SequenceFrame (SequenceFrame)
                                          , Burst (Burst)
@@ -48,7 +49,7 @@ main = do
     print objFilenames'
     textureConfigYaml' <- textureConfigYaml textureDir'
     let config = Config
-            (ConfigObjectFilenames objFilenames')
+            (ConfigObjectSpec $ map ConfigObjectFilePath objFilenames')
             (ConfigMtlFilePath mtlFilename')
             textureConfigYaml'
     (wolfSeq, textureMap) <- parse config

@@ -3,8 +3,9 @@
 
 module Codec.MeshObjGles.Parse ( Config (Config)
                                , ConfigTextureSpec (ConfigTextureDir)
-                               , ConfigObjectSpec (ConfigObjectFilenames)
-                               , ConfigMtlSpec (ConfigMtlFilePath)
+                               , ConfigObjectSpec (ConfigObjectSpec)
+                               , ConfigObjectSpecItem (ConfigObjectFilePath, ConfigObjectSource)
+                               , ConfigMtlSpec (ConfigMtlFilePath, ConfigMtlSource)
                                , TextureConfig (TextureConfig)
                                , Sequence (Sequence)
                                , SequenceFrame (SequenceFrame)
@@ -33,7 +34,7 @@ module Codec.MeshObjGles.Parse ( Config (Config)
 
 import           Data.ByteString as BS ( ByteString )
 import qualified Data.ByteString as BS ( readFile )
-import qualified Data.ByteString.Char8 as BS8 ( pack )
+import qualified Data.ByteString.Char8 as BS8 ( pack, unpack )
 import           Data.Text as T ( Text )
 import qualified Data.Text as T ( pack, unpack )
 import           Data.Function ( (&) )
@@ -103,8 +104,9 @@ import           Codec.MeshObjGles.ParseUtil ( frint
 
 import           Codec.MeshObjGles.Types ( Config (Config)
                                          , ConfigTextureSpec (ConfigTextureDir)
-                                         , ConfigObjectSpec (ConfigObjectFilenames)
-                                         , ConfigMtlSpec (ConfigMtlFilePath)
+                                         , ConfigObjectSpec (ConfigObjectSpec)
+                                         , ConfigObjectSpecItem (ConfigObjectFilePath, ConfigObjectSource)
+                                         , ConfigMtlSpec (ConfigMtlFilePath, ConfigMtlSource)
                                          , Coords
                                          , Sequence (Sequence)
                                          , SequenceFrame (SequenceFrame)
@@ -153,21 +155,29 @@ import           Prelude hiding ( elem )
 parse :: Config -> IO (Sequence, TextureMap)
 parse config = do
     let Config objSpec mtlSpec textureConfigYaml = config
-        objFilenames
-          | ConfigObjectFilenames fps' <- objSpec = fps'
-          | otherwise = error "impl obj spec"
-        mtlFilename
-          | ConfigMtlFilePath fp' <- mtlSpec = fp'
-          | otherwise = error "impl mtl spec"
+--         objFilenames
+--           | ConfigObjectFilenames fps' <- objSpec = fps'
+--           | otherwise = error "impl obj spec"
+        objSources = undefined
+        mtlSource
+          | ConfigMtlFilePath fp' <- mtlSpec = BS.readFile fp'
+          | ConfigMtlSource src' <- mtlSpec = pure src'
+          | otherwise = error "ConfigMtlSpec"
+    mtlSource' <- mtlSource
     textureMap <- getTextureMap textureConfigYaml
-    materialMapMaterial <- getMaterialMap mtlFilename textureMap
-    frames <- flip mapM objFilenames $ \objFilename ->
-        parseFrame' materialMapMaterial textureConfigYaml objFilename
-    pure $ (Sequence frames, textureMap)
+    materialMapMaterial <- getMaterialMap mtlSource' textureMap
+    let ConfigObjectSpec specItems' = objSpec
+    -- frames' <- flip mapM objFilenames $ \objFilename ->
+    --    parseFrame' materialMapMaterial textureConfigYaml objFilename
+    frames' <- flip mapM specItems' $ \item' ->
+          parseFrame' materialMapMaterial textureConfigYaml item'
+--     frames' <- objFilenames $ \objFilename ->
+--         parseFrame' materialMapMaterial textureConfigYaml objFilename
+    pure $ (Sequence frames', textureMap)
 
-parseFrame' :: MaterialMapMaterial -> ByteString -> FilePath -> IO SequenceFrame
-parseFrame' materialMapMaterial textureConfigYaml objFilename = do
-    objMap <- getObjMap objFilename
+parseFrame' :: MaterialMapMaterial -> ByteString -> ConfigObjectSpecItem -> IO SequenceFrame
+parseFrame' materialMapMaterial textureConfigYaml objSpecItem = do
+    objMap <- getObjMap objSpecItem
 
     let objNames = Dmap.keys objMap
         bursts = concat . mapList (makeBursts materialMapMaterial) $ objMap
@@ -188,23 +198,20 @@ mapListM f m = mapM map' $ Dmap.keys m where
     map' key = f key $ val' key
     val' key = fromJust $ Dmap.lookup key m
 
-getObjMap :: FilePath -> IO ObjMap
--- getObjMap objFilename = prepare' <$> parseObj objFilename where
-getObjMap objFilename = do
-    parsed' <- parseObj objFilename
+getObjMap :: ConfigObjectSpecItem -> IO ObjMap
+getObjMap objSpecItem = do
+    parsed' <- parseObj objSpecItem
     pure . prepare' $ parsed' where
     prepare' = either error' prepareFrame
     error' = error . printf "bad parse: %s"
 
-parseObj :: FilePath -> IO (Either String WavefrontOBJ)
-parseObj objFilename = do
-    let file = objFilename
-    parseFile file
+parseObj :: ConfigObjectSpecItem -> IO (Either String WavefrontOBJ)
+parseObj (ConfigObjectFilePath fp) = parseFile fp
+parseObj (ConfigObjectSource src) = error "impl parseObj"
 
-getMaterialMap :: FilePath -> TextureMap -> IO MaterialMapMaterial
-getMaterialMap mtlFilename textureMap = do
-    mtl <- readFile mtlFilename
-    Pmtl.parse mtl textureMap
+getMaterialMap :: ByteString -> TextureMap -> IO MaterialMapMaterial
+getMaterialMap mtlSource textureMap = do
+    Pmtl.parse (BS8.unpack mtlSource) textureMap
 
 getTextureMap :: ByteString -> IO TextureMap
 getTextureMap textureConfigYaml = either err' prepareTextureConfig textureConfig' where

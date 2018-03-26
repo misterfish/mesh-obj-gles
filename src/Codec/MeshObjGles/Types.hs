@@ -56,8 +56,9 @@
 
 module Codec.MeshObjGles.Types ( Config (Config)
                                , ConfigTextureSpec (ConfigTextureDir)
-                               , ConfigObjectSpec (ConfigObjectFilenames)
-                               , ConfigMtlSpec (ConfigMtlFilePath)
+                               , ConfigObjectSpec (ConfigObjectSpec)
+                               , ConfigObjectSpecItem (ConfigObjectFilePath, ConfigObjectSource)
+                               , ConfigMtlSpec (ConfigMtlFilePath, ConfigMtlSource)
                                , MaterialMapCoordsI
                                , ObjMap
                                , MaterialMapMaterial
@@ -132,8 +133,13 @@ data Config = Config { configObjSpec :: ConfigObjectSpec
                      , configTextureConfigYaml :: ByteString }
 
 data ConfigTextureSpec = ConfigTextureDir FilePath
-data ConfigObjectSpec = ConfigObjectFilenames [FilePath]
+data ConfigObjectSpec = ConfigObjectSpec [ConfigObjectSpecItem]
+
+data ConfigObjectSpecItem = ConfigObjectFilePath FilePath
+                          | ConfigObjectSource ByteString
+
 data ConfigMtlSpec = ConfigMtlFilePath FilePath
+                   | ConfigMtlSource ByteString
 
 data Sequence = Sequence ![SequenceFrame] deriving Show
 data SequenceFrame  = SequenceFrame ![Burst] deriving Show
