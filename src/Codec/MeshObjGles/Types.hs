@@ -136,7 +136,7 @@ data ConfigTextureSpec = ConfigTextureDir FilePath
 data ConfigObjectSpec = ConfigObjectSpec [ConfigObjectSpecItem]
 
 data ConfigObjectSpecItem = ConfigObjectFilePath FilePath
-                          | ConfigObjectSource ByteString
+                          | ConfigObjectSource Text
 
 data ConfigMtlSpec = ConfigMtlFilePath FilePath
                    | ConfigMtlSource ByteString

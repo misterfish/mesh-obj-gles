@@ -79,7 +79,6 @@ import           Codec.Wavefront ( WavefrontOBJ
                                  , Face (Face)
                                  , FaceIndex (FaceIndex)
                                  , Location
-                                 , fromFile
                                  , objFaces
                                  , objLocations
                                  , objTexCoords
@@ -90,6 +89,9 @@ import           Codec.Wavefront ( WavefrontOBJ
                                  , elObject
                                  , elValue
                                  , elMtl )
+
+import qualified Codec.Wavefront as Cwav ( fromFile
+                                         , fromSource )
 
 import           Codec.MeshObjGles.ParseUtil ( frint
                                              , verple2
@@ -206,8 +208,8 @@ getObjMap objSpecItem = do
     error' = error . printf "bad parse: %s"
 
 parseObj :: ConfigObjectSpecItem -> IO (Either String WavefrontOBJ)
-parseObj (ConfigObjectFilePath fp) = parseFile fp
-parseObj (ConfigObjectSource src) = error "impl parseObj"
+parseObj (ConfigObjectFilePath fp) = Cwav.fromFile fp
+parseObj (ConfigObjectSource src) = Cwav.fromSource src
 
 getMaterialMap :: ByteString -> TextureMap -> IO MaterialMapMaterial
 getMaterialMap mtlSource textureMap = do
@@ -257,8 +259,6 @@ mergeMtl (a, b, c) (x, y, z) = (merge' a x, merge' b y, merge' c z) where
 groupByObj elem1 elem2 = a == b where
     a = elObject elem1
     b = elObject elem2
-
-parseFile = fromFile
 
 toVertices :: WavefrontOBJ -> Face -> (Maybe (Vector Vertex3), Maybe (Vector Vertex2), Maybe (Vector Vertex3))
 toVertices parsed (Face v1 v2 v3 _extras) = vertices' where
