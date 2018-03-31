@@ -22,7 +22,10 @@
 --
 -- Parsing an .mtl file yields MaterialMapMaterial, which is a map of Text
 -- (material name) to Material structure. A Material contains lighting info
--- and a Maybe Texture corresponding to the texture image.
+-- and a Maybe Texture corresponding to the texture image. The .mtl file
+-- also contains paths to images which serve as maps for the various
+-- lighting parameters, but it is not clear how to use them and they are
+-- currently being ignored.
 --
 -- The .mtl contains path names to texture images but these should be
 -- ignored. (They could be the paths on the local machine of the blender

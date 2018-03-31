@@ -9,6 +9,8 @@ import           Debug.Trace ( trace )
 import           Control.Monad.IO.Class ( liftIO )
 import           Control.Monad ( (<=<), void )
 import           Data.Monoid ( (<>) )
+import           Control.Monad.Trans.Either ( EitherT, runEitherT, hoistEither )
+import           Control.Monad.IO.Class ( liftIO )
 import           Data.Vector as DV ( Vector
                                    , snoc )
 import qualified Data.Vector as DV ( (++)
@@ -54,7 +56,7 @@ import           Text.Parsec ( (<|>)
 
 import qualified Text.ParserCombinators.Parsec as P ( parse )
 
-import Codec.MeshObjGles.ParseUtil ( trim )
+import Codec.MeshObjGles.ParseUtil ( trim, fmapLeftT, hoistIOEither )
 import Codec.MeshObjGles.Types
              ( MaterialMapMaterial
              , Material (Material)
@@ -75,13 +77,15 @@ import Codec.MeshObjGles.Types
 
 type Parser a = ParsecT String () IO a
 
-parse :: String -> TextureMap -> IO MaterialMapMaterial
-parse str textureMap = either' <$> parseInput (start textureMap) () str where
-    either' = either error' id
-    error' x = error $ "bad parse: " <> show x
+parse :: String -> TextureMap -> EitherT String IO MaterialMapMaterial
+parse str textureMap = do
+    let p :: EitherT ParseError IO MaterialMapMaterial
+        p = parseInput (start textureMap) () str
+        show' x = "bad parse: " <> show x
+    fmapLeftT show' p
 
-parseInput :: Parser a -> () -> String -> IO (Either ParseError a)
-parseInput start' initState = runParserT start' initState "(no filename)" . trim
+parseInput :: Parser a -> () -> String -> EitherT ParseError IO a
+parseInput start' initState = hoistIOEither . runParserT start' initState "(no filename)" . trim
 
 start :: TextureMap -> Parser MaterialMapMaterial
 start textureMap = do

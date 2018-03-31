@@ -52,9 +52,10 @@ main = do
             (ConfigObjectSpec $ map ConfigObjectFilePath objFilenames')
             (ConfigMtlFilePath mtlFilename')
             textureConfigYaml'
-    (wolfSeq, textureMap) <- parse config
-    printSeq wolfSeq
-    pure ()
+    parsedEi <- parse config
+    either error' print' parsedEi where
+        error' = error "Couldn't parse"
+        print' (wolfSeq, textureMap) = printSeq wolfSeq
 
 printSeq sequ = do
     let Sequence frames = sequ

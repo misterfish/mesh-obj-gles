@@ -41,6 +41,8 @@ import           Data.Function ( (&) )
 import           Data.Foldable ( foldl' )
 import           Data.List ( groupBy )
 import           Data.Maybe ( fromJust, isJust )
+import           Control.Monad.Trans.Either ( EitherT, runEitherT, hoistEither, bimapEitherT )
+import           Control.Monad.IO.Class ( liftIO )
 import           Data.Monoid ( (<>) )
 import           Text.Printf ( printf )
 import           Control.Monad ( (<=<)
@@ -60,6 +62,7 @@ import qualified Data.Vector as Dvec ( (++)
 import           Text.RawString.QQ ( r )
 import           Data.Yaml as Y ( (.:)
                                 , FromJSON
+                                , ParseException
                                 , decodeEither'
                                 , prettyPrintParseException
                                 , parseJSON )
@@ -94,12 +97,17 @@ import qualified Codec.Wavefront as Cwav ( fromFile
                                          , fromSource )
 
 import           Codec.MeshObjGles.ParseUtil ( frint
+                                             , fmapLeftT
                                              , verple2
                                              , verple3
                                              , verl2
+                                             , hoistIOEither
                                              , verl3
                                              , dec
                                              , asterisk
+                                             , mapListEither
+                                             , mapListM
+                                             , mapList
                                              , fst3
                                              , snd3
                                              , thd3 )
@@ -154,85 +162,70 @@ import qualified Codec.MeshObjGles.ParseMtl as Pmtl  ( parse
 
 import           Prelude hiding ( elem )
 
-parse :: Config -> IO (Sequence, TextureMap)
-parse config = do
+parse :: Config -> IO (Either String (Sequence, TextureMap))
+parse = runEitherT . parse'
+
+parse' :: Config -> EitherT String IO (Sequence, TextureMap)
+parse' config = do
     let Config objSpec mtlSpec textureConfigYaml = config
---         objFilenames
---           | ConfigObjectFilenames fps' <- objSpec = fps'
---           | otherwise = error "impl obj spec"
-        objSources = undefined
         mtlSource
           | ConfigMtlFilePath fp' <- mtlSpec = BS.readFile fp'
           | ConfigMtlSource src' <- mtlSpec = pure src'
           | otherwise = error "ConfigMtlSpec"
-    mtlSource' <- mtlSource
+    mtlSource' <- liftIO mtlSource
     textureMap <- getTextureMap textureConfigYaml
-    materialMapMaterial <- getMaterialMap mtlSource' textureMap
     let ConfigObjectSpec specItems' = objSpec
-    -- frames' <- flip mapM objFilenames $ \objFilename ->
-    --    parseFrame' materialMapMaterial textureConfigYaml objFilename
+    materialMapMaterial <- getMaterialMap mtlSource' textureMap
     frames' <- flip mapM specItems' $ \item' ->
-          parseFrame' materialMapMaterial textureConfigYaml item'
---     frames' <- objFilenames $ \objFilename ->
---         parseFrame' materialMapMaterial textureConfigYaml objFilename
-    pure $ (Sequence frames', textureMap)
+        parseFrame' materialMapMaterial textureConfigYaml item'
+    pure (Sequence frames', textureMap)
 
-parseFrame' :: MaterialMapMaterial -> ByteString -> ConfigObjectSpecItem -> IO SequenceFrame
+parseFrame' :: MaterialMapMaterial -> ByteString -> ConfigObjectSpecItem -> EitherT String IO SequenceFrame
 parseFrame' materialMapMaterial textureConfigYaml objSpecItem = do
     objMap <- getObjMap objSpecItem
 
     let objNames = Dmap.keys objMap
-        bursts = concat . mapList (makeBursts materialMapMaterial) $ objMap
-    pure $ SequenceFrame bursts
+    bursts <- hoistEither . mapListEither (makeBursts materialMapMaterial) $ objMap
+    let bursts' = concat bursts
+    pure $ SequenceFrame bursts'
 
 -- Prepare list of Burst for a given blender object.
-makeBursts :: MaterialMapMaterial -> ObjName -> MaterialMapCoordsI -> [Burst]
+makeBursts :: MaterialMapMaterial -> ObjName -> MaterialMapCoordsI -> Either String [Burst]
 makeBursts mtlMapMaterial objName mtlMapCoords =
     prepareBursts mtlMapMaterial mtlMapCoords
 
-mapList :: Ord a => (a -> b -> c) -> Map a b -> [c]
-mapList f m = map map' $ Dmap.keys m where
-    map' key = f key $ val' key
-    val' key = fromJust $ Dmap.lookup key m
+getObjMap :: ConfigObjectSpecItem -> EitherT String IO ObjMap
+getObjMap = bimapEitherT error' prepareFrame . parseObj where
+    error' = ("bad obj parse: " <>)
 
-mapListM :: (Ord a, Monad m) => (a -> b -> m c) -> Map a b -> m [c]
-mapListM f m = mapM map' $ Dmap.keys m where
-    map' key = f key $ val' key
-    val' key = fromJust $ Dmap.lookup key m
+parseObj :: ConfigObjectSpecItem -> EitherT String IO WavefrontOBJ
+parseObj (ConfigObjectFilePath fp) = hoistIOEither $ Cwav.fromFile fp
+parseObj (ConfigObjectSource src)  = hoistIOEither $ Cwav.fromSource src
 
-getObjMap :: ConfigObjectSpecItem -> IO ObjMap
-getObjMap objSpecItem = do
-    parsed' <- parseObj objSpecItem
-    pure . prepare' $ parsed' where
-    prepare' = either error' prepareFrame
-    error' = error . printf "bad parse: %s"
-
-parseObj :: ConfigObjectSpecItem -> IO (Either String WavefrontOBJ)
-parseObj (ConfigObjectFilePath fp) = Cwav.fromFile fp
-parseObj (ConfigObjectSource src) = Cwav.fromSource src
-
-getMaterialMap :: ByteString -> TextureMap -> IO MaterialMapMaterial
-getMaterialMap mtlSource textureMap = do
+getMaterialMap :: ByteString -> TextureMap -> EitherT String IO MaterialMapMaterial
+getMaterialMap mtlSource textureMap =
     Pmtl.parse (BS8.unpack mtlSource) textureMap
 
-getTextureMap :: ByteString -> IO TextureMap
-getTextureMap textureConfigYaml = either err' prepareTextureConfig textureConfig' where
-    err' err = error $ "Couldn't decode texture config yaml " <> prettyPrintParseException err
-    textureConfig' = Y.decodeEither' textureConfigYaml
+getTextureMap :: ByteString -> EitherT String IO TextureMap
+getTextureMap textureConfigYaml = do
+    let texConfigI :: EitherT String IO TextureConfigI
+        texConfigI = fmapLeftT error' . hoistEither $ textureConfig'
+        textureConfig' = Y.decodeEither' textureConfigYaml
+        error' :: ParseException -> String
+        error' = ("Couldn't decode texture config yaml: " <>) . prettyPrintParseException
+    liftIO . prepareTextureConfig =<< texConfigI
 
-prepareBursts :: MaterialMapMaterial -> MaterialMapCoordsI -> [Burst]
+prepareBursts :: MaterialMapMaterial -> MaterialMapCoordsI -> Either String [Burst]
 prepareBursts materialMapMaterial materialMapCoords = objToBurst' materialMapCoords where
-    objToBurst' mmc = map (toBurst materialMapMaterial) (objList' mmc)
+    objToBurst' mmc = mapM (toBurst materialMapMaterial) (objList' mmc)
     objList' mmc = Dmap.toList mmc
 
-toBurst :: MaterialMapMaterial -> (MtlName, Coords) -> Burst
-toBurst materialMap (mtlName, coords) = burst' where
-    burst' = Burst vertices' (snd3 coords) (thd3 coords) material'
-    vertices' = toPosition' $ fst3 coords
-    -- achtung
-    material' = fromJust $ Dmap.lookup mtlName materialMap
-    toPosition' = maybe (error' "position") id
-    error' = error . (<>) "Missing vertex info for "
+toBurst :: MaterialMapMaterial -> (MtlName, Coords) -> Either String Burst
+toBurst materialMap (mtlName, coords) = do
+    material' <- maybe (Left "failed mtlName lookup in materialMap") Right $ Dmap.lookup mtlName materialMap
+    let toPosition' = maybe (Left "Missing vertex info for position") Right
+    vertices' <- toPosition' $ fst3 coords
+    pure $ Burst vertices' (snd3 coords) (thd3 coords) material'
 
 prepareFrame :: WavefrontOBJ -> ObjMap
 prepareFrame parsed = do
