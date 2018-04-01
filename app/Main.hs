@@ -14,6 +14,7 @@ import           Data.Monoid ( (<>) )
 import           Control.Monad ( join )
 import qualified Text.RawString.QQ as QQ ( r )
 
+import           Control.DeepSeq ( deepseq )
 import           Data.Vector as Dvec ( take )
 
 import           System.FilePath.Glob as Sfg ( globDir1 )
@@ -48,14 +49,14 @@ main = do
     objFilenames' <- sort <$> globDir1 (Sfg.compile objFilenameGlob) framesDir'
     print objFilenames'
     textureConfigYaml' <- textureConfigYaml textureDir'
-    let config = Config
-            (ConfigObjectSpec $ map ConfigObjectFilePath objFilenames')
-            (ConfigMtlFilePath mtlFilename')
-            textureConfigYaml'
-    parsedEi <- parse config
-    either error' print' parsedEi where
-        error' = error "Couldn't parse"
-        print' (wolfSeq, textureMap) = printSeq wolfSeq
+    let config = Config c1 c2 c3
+        c1 = ConfigObjectSpec $ map ConfigObjectFilePath objFilenames'
+        c2 = ConfigMtlFilePath mtlFilename'
+        c3 = textureConfigYaml'
+    parsed' <- parse config
+    either error' print' parsed' where
+        error' x = error $ "Couldn't parse: " <> x
+        print' (wolfSeq, textureMap) = wolfSeq `deepseq` printSeq wolfSeq
 
 printSeq sequ = do
     let Sequence frames = sequ

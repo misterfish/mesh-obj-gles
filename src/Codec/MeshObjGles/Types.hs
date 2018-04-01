@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | The root structure is a Sequence, which is a mashup of several .obj
+-- | This is a proof of concept for exporting a scene or a sequence of
+-- scenes from blender into a form ready to draw in GLES. See
+-- `sdl-gles-cairo-demo` for the GLES part.
+--
+-- The root structure is a Sequence, which is a mashup of several .obj
 -- files and one .mtl file.
 --
 -- A Sequence contains a list of SequenceFrame structures.
@@ -22,20 +26,31 @@
 --
 -- Parsing an .mtl file yields MaterialMapMaterial, which is a map of Text
 -- (material name) to Material structure. A Material contains lighting info
--- and a Maybe Texture corresponding to the texture image. The .mtl file
--- also contains paths to images which serve as maps for the various
--- lighting parameters, but it is not clear how to use them and they are
--- currently being ignored.
+-- and a Maybe Texture corresponding to the texture image. 
+--
+-- We ignore certain properties of the material -- we just use enough
+-- lighting and texture info to somewhat convincingly paint the objects.
+-- These could be added later to the structures and parsed if desired.
 --
 -- The .mtl contains path names to texture images but these should be
 -- ignored. (They could be the paths on the local machine of the blender
 -- artist for example). The artist is responsible for making the texture
 -- images available to us.
 --
--- Texture info has to be provided separately through a yaml-style
--- configuration. Blender doesn't export it so you have to figure out the
--- mapping manually. The image must be a .png and already be in base64
--- format.
+-- To use this library, we require that texture info be provided separately
+-- through a yaml-style configuration, with the texture images hardcoded as
+-- base64 png data. The main reason for this is so that the GLES code
+-- doesn't need to touch the filesystem, which is useful for mobile.
+--
+-- This library takes an important shortcut in handling textures: each
+-- material can have only 0 or 1 associated textures. It also ignores
+-- parameters like -s (scaling). This could be trivially added, but the GLES
+-- side is harder: drawing the same mesh with more than one texture requires
+-- advanced techniques.
+--
+-- We do keep track of what kind of mapping the texture image corresponds
+-- to: (dissolve, specular, etc.). It is up to the fragment shader what it
+-- wishes to do with the sampled texture data.
 --
 -- Parsing an .obj file yields a map of maps, first mapping an object name
 -- (e.g. Cube.002) to a MaterialMapCoordsI, then mapping on texture name
@@ -48,9 +63,9 @@
 -- new Burst means activating a material and then uploading one to three
 -- sets of vertices. The new material properties need to be sent as
 -- attributes and/or uniforms. If the new material contains a texture then
--- the new texture also needs to get active (our `Coords.activeTexture`
--- routine). You can also optionally 'use' a new shader program if desired,
--- but be sure to send the same MVP matrix uniforms as the current program.
+-- the new texture also needs to be made active. You can also optionally
+-- 'use' a new shader program if desired, but be sure to send the same MVP
+-- matrix uniforms as the current program.
 
 -- A sequence (e.g. walk sequence, run sequence) is a list of .obj files. At
 -- some point perhaps it might be good to allow .obj files to be shared if
@@ -83,6 +98,9 @@ module Codec.MeshObjGles.Types ( Config (Config)
                                , TcitImageSpec (TcitImageFilePath, TcitImageBase64)
                                , Sequence (Sequence)
                                , SequenceFrame (SequenceFrame)
+                               , TextureTypesSet
+                               , TextureType (TextureDiffuse, TextureAmbient, TextureDissolve, TextureSpecular, TextureSpecularExp, TextureEmissive)
+                               , Parser
                                , configObjSpec
                                , configMtlSpec
                                , configTextureConfigYaml
@@ -108,6 +126,7 @@ import           Text.Printf ( printf )
 import           Data.ByteString as BS ( ByteString )
 import qualified Data.ByteString as BS ( take, unpack )
 import           Data.Text ( Text )
+import           Data.Set as Dset ( Set )
 import           Data.Map as DM ( Map )
 import qualified Data.Map as DM ( empty
                                 , insert
@@ -123,13 +142,17 @@ import           Control.DeepSeq ( NFData
 -- import           Control.DeepSeq.Generics ( genericRnf )
 --                                  , GNFData )
 
-import Control.Monad.IO.Class ( liftIO )
+import           Control.Monad.IO.Class ( liftIO )
+
+import           Text.Parsec ( ParsecT )
 import           Data.Yaml as Y ( (.:)
                                 , FromJSON
                                 , parseJSON
                                 )
 import qualified Data.Yaml as Y ( Value (Object)
                                 , Parser )
+
+type Parser a = ParsecT String () IO a
 
 data Config = Config { configObjSpec :: ConfigObjectSpec
                      , configMtlSpec :: ConfigMtlSpec
@@ -150,13 +173,22 @@ data SequenceFrame  = SequenceFrame ![Burst] deriving Show
 type MaterialMapMaterial = Map MtlName Material
 
 type MaybeTexture = Maybe Texture
+type TextureTypesSet = Set TextureType
+data TextureType = TextureDiffuse
+                 | TextureAmbient
+                 | TextureDissolve
+                 | TextureSpecular
+                 | TextureSpecularExp
+                 | TextureEmissive
+                 deriving (Show, Ord, Eq)
 
-data Material = Material { materialName :: !MtlName
-                         , materialSpecularExp :: !Float
-                         , materialAmbientColor :: !Vertex3
-                         , materialDiffuseColor :: !Vertex3
+data Material = Material { materialName          :: !MtlName
+                         , materialSpecularExp   :: !Float
+                         , materialAmbientColor  :: !Vertex3
+                         , materialDiffuseColor  :: !Vertex3
                          , materialSpecularColor :: !Vertex3
-                         , materialTexture :: !MaybeTexture }
+                         , materialTextureTypes  :: !TextureTypesSet
+                         , materialTexture       :: !MaybeTexture }
                          deriving Show
 
 type PngBase64 = ByteString
@@ -243,26 +275,28 @@ tailSequence (Sequence s) = Sequence $ tail s
 -- Provide simple Generic/NFData instances so the consumer can force deep
 -- evaluation with deepseq.
 
-instance Generic Sequence
+-- instance Generic Sequence
 instance NFData Sequence where
     rnf (Sequence frames) = frames `deepseq` ()
-instance Generic SequenceFrame
+-- instance Generic SequenceFrame
 instance NFData SequenceFrame where
     rnf (SequenceFrame bursts) = bursts `deepseq` ()
-instance Generic Burst
+-- instance Generic Burst
 instance NFData Burst where
     rnf (Burst vertices texCoordsMb normalsMb material) =
         vertices `deepseq` texCoordsMb `deepseq` normalsMb `deepseq` material `deepseq` ()
-instance Generic Vertex2
+-- instance Generic Vertex2
 instance NFData Vertex2 where
     rnf (Vertex2 a b) = a `deepseq` b `deepseq` ()
-instance Generic Vertex3
+-- instance Generic Vertex3
 instance NFData Vertex3 where
     rnf (Vertex3 a b c) = a `deepseq` b `deepseq` c `deepseq` ()
-instance Generic Material
+-- instance Generic Material
 instance NFData Material where
-    rnf (Material n se ac dc sc mt) =
-        n `deepseq` se `deepseq` ac `deepseq` dc `deepseq` sc `deepseq` mt `deepseq` ()
-instance Generic Texture
+    rnf (Material n se ac dc sc tt mt) =
+        n `deepseq` se `deepseq` ac `deepseq` dc `deepseq` sc `deepseq` tt `deepseq` mt `deepseq` ()
+-- instance Generic Texture
 instance NFData Texture where
     rnf (Texture png w h) = png `deepseq` w `deepseq` h `deepseq` ()
+instance NFData TextureType where
+    rnf = const ()

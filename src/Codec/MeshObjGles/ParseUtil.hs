@@ -12,6 +12,7 @@ module Codec.MeshObjGles.ParseUtil ( trim
                                    , mapListEither
                                    , mapListM
                                    , mapList
+                                   , sepBy1X
                                    , fst3
                                    , snd3
                                    , thd3 ) where
@@ -24,12 +25,13 @@ import           Data.Char ( isSpace )
 import           Data.Maybe ( fromJust, isJust )
 import           Data.Map as Dmap ( Map )
 import qualified Data.Map as Dmap ( keys, lookup )
-import           Text.Parsec ( ParsecT, oneOf )
+import           Text.Parsec ( ParsecT
+                             , oneOf
+                             , many
+                             , try )
 
 import           Codec.MeshObjGles.Types ( Vertex2 (Vertex2)
                                          , Vertex3 (Vertex3) )
-
-type Parser = ParsecT String () Identity
 
 -- | not efficient.
 trim :: String -> String
@@ -77,4 +79,13 @@ mapListM = mapList' mapM
 mapList' mapper f m = mapper map' $ Dmap.keys m where
     map' key = f key $ val' key
     val' key = fromJust $ Dmap.lookup key m
+
+-- A variation on sepBy1 which backtracks if the input ends on the
+-- separator.
+-- To see why this is useful, consider the input: "1,2,3,4,,7,8,9", with the
+-- desired result [[1,2,3,4], [7,8,9]]
+-- If you use ordinary `sepBy` to break into chunks on ',,' and then within
+-- the chunks on `,`, it will fail.
+sepBy1X p sep = (:) <$> p <*> q where
+    q = many . try $ sep >> p
 

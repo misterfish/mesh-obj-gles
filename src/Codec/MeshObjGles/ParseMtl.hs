@@ -1,13 +1,17 @@
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Codec.MeshObjGles.ParseMtl ( parse
                 , start ) where
 
-import           Data.Text as T ( Text, pack )
+import           Data.Text as Dtext ( Text, pack, unpack, intercalate, splitOn )
 import           Data.Foldable ( foldl' )
 import           Data.Function ( (&) )
 import           Data.Functor.Identity ( Identity )
 import           Debug.Trace ( trace )
 import           Control.Monad.IO.Class ( liftIO )
 import           Control.Monad ( (<=<), void )
+import           Control.Applicative ( (<|>) )
 import           Data.Monoid ( (<>) )
 import           Control.Monad.Trans.Either ( EitherT, runEitherT, hoistEither )
 import           Control.Monad.IO.Class ( liftIO )
@@ -18,6 +22,7 @@ import qualified Data.Vector as DV ( (++)
                                    , empty
                                    )
 
+import           Data.Set as Dset ( empty, fromList )
 import           Data.Map as Dmap ( Map )
 import qualified Data.Map as Dmap ( empty
                                   , insert
@@ -25,8 +30,7 @@ import qualified Data.Map as Dmap ( empty
                                   , lookup )
 
 import           Text.Printf ( printf )
-import           Text.Parsec ( (<|>)
-                             , char
+import           Text.Parsec ( char
                              , digit
                              , satisfy
                              , try
@@ -38,7 +42,8 @@ import           Text.Parsec ( (<|>)
                              , anyToken
                              , lookAhead
                              , many1
-                             , oneOf , sepBy
+                             , oneOf
+                             , sepBy
                              , endBy
                              , sepBy1
                                -- can sometimes help resolve the trailing space problem.
@@ -56,9 +61,15 @@ import           Text.Parsec ( (<|>)
 
 import qualified Text.ParserCombinators.Parsec as P ( parse )
 
-import Codec.MeshObjGles.ParseUtil ( trim, fmapLeftT, hoistIOEither )
+import Codec.MeshObjGles.ParseUtil ( trim
+                                   , fmapLeftT
+                                   , hoistIOEither
+                                   , sepBy1X )
 import Codec.MeshObjGles.Types
-             ( MaterialMapMaterial
+             ( Parser
+             , MaterialMapMaterial
+             , TextureTypesSet
+             , TextureType (TextureDiffuse, TextureAmbient, TextureDissolve, TextureSpecular, TextureSpecularExp, TextureEmissive)
              , Material (Material)
              , Vertex2 (Vertex2)
              , Vertex3 (Vertex3)
@@ -75,14 +86,21 @@ import Codec.MeshObjGles.Types
 
 -- runParserT: generic parser with arbitrary state over arbitrary monad.
 
-type Parser a = ParsecT String () IO a
-
 parse :: String -> TextureMap -> EitherT String IO MaterialMapMaterial
-parse str textureMap = do
+parse input textureMap = do
     let p :: EitherT ParseError IO MaterialMapMaterial
-        p = parseInput (start textureMap) () str
+        p = parseInput (start textureMap) () inputCanonical
+        inputCanonical = canonicalise input
         show' x = "bad parse: " <> show x
+    liftIO . putStrLn $ printf "can: %s" inputCanonical
     fmapLeftT show' p
+
+-- not efficient but makes writing the parser much easier.
+-- canonicalise = replaceStr "\n\n" "\n@"
+canonicalise = id
+
+-- not efficient: to Text and back.
+replaceStr wat met = Dtext.unpack . Dtext.intercalate met . Dtext.splitOn wat . Dtext.pack
 
 parseInput :: Parser a -> () -> String -> EitherT ParseError IO a
 parseInput start' initState = hoistIOEither . runParserT start' initState "(no filename)" . trim
@@ -107,13 +125,48 @@ material textureMap = do
     ac <- getVertex3 "Ka" <* nl
     dc <- getVertex3 "Kd" <* nl
     sc <- getVertex3 "Ks" <* nl
+    string "Ke" *> many1 notNl <* nl
+    string "Ni" *> many1 notNl <* nl
+    string "d" *> many1 notNl <* nl
+    string "illum" *> many1 notNl
+    tt <- textureTypes
+    liftIO . putStrLn $ printf "name: %s, tt: %s" name (show tt)
     let texMb = lookupTexture textureMap name
     manyTill anyToken sepOrEof
-    pure $ Material (T.pack name) se ac dc sc texMb where
+    pure $ Material (Dtext.pack name) se ac dc sc tt texMb where
+
+textureTypes :: Parser TextureTypesSet
+textureTypes = try textureTypes' <|> pure []
+
+textureTypes' :: Parser TextureTypesSet
+textureTypes' = do
+    nl
+    pure . Dset.fromList =<< (textureType `sepBy1X` nl)
+
+textureType :: Parser TextureType
+textureType  =  try textureTypeSpecularExp
+            <|> try textureTypeDiffuse
+            <|> try textureTypeAmbient
+            <|> try textureTypeEmissive
+            <|> try textureTypeSpecular
+            <|> try textureTypeDissolve
+
+textureTypeDissolve :: Parser TextureType
+textureTypeDissolve = string "map_d " *> many1 notNl *> pure TextureDissolve
+textureTypeSpecular :: Parser TextureType
+textureTypeSpecular = string "map_Ks " *> many1 notNl *> pure TextureSpecular
+textureTypeEmissive :: Parser TextureType
+textureTypeEmissive = string "map_Ke " *> many1 notNl *> pure TextureEmissive
+textureTypeAmbient  :: Parser TextureType
+textureTypeAmbient  = string "map_Ka " *> many1 notNl *> pure TextureAmbient
+textureTypeDiffuse  :: Parser TextureType
+textureTypeDiffuse  = string "map_Kd " *> many1 notNl *> pure TextureDiffuse
+textureTypeSpecularExp :: Parser TextureType
+textureTypeSpecularExp = string "map_Ns " *> many1 notNl *> pure TextureSpecularExp
 
 lookupTexture :: TextureMap -> String -> Maybe Texture
 lookupTexture textureMap textureName = do
-    let textureNameTxt = T.pack textureName
+    let textureNameTxt = Dtext.pack textureName
     textureConfig' <- textureMap & Dmap.lookup textureNameTxt
     let width' = tcWidth textureConfig'
         height' = tcHeight textureConfig'
@@ -122,6 +175,7 @@ lookupTexture textureMap textureName = do
 
 sepOrEof = try (void sep') <|> try eof where
     sep' = try . lookAhead $ string "\n\n"
+    -- sep' = try . lookAhead $ string "@"
 
 line = flip (:) <$> many1 notNl <*> nl
 

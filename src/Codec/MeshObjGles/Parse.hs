@@ -183,11 +183,11 @@ parse' config = do
 parseFrame' :: MaterialMapMaterial -> ByteString -> ConfigObjectSpecItem -> EitherT String IO SequenceFrame
 parseFrame' materialMapMaterial textureConfigYaml objSpecItem = do
     objMap <- getObjMap objSpecItem
+    liftIO . putStrLn $ printf "objMap: %s" (show objMap)
 
     let objNames = Dmap.keys objMap
     bursts <- hoistEither . mapListEither (makeBursts materialMapMaterial) $ objMap
-    let bursts' = concat bursts
-    pure $ SequenceFrame bursts'
+    pure . SequenceFrame $ concat bursts
 
 -- Prepare list of Burst for a given blender object.
 makeBursts :: MaterialMapMaterial -> ObjName -> MaterialMapCoordsI -> Either String [Burst]
@@ -222,10 +222,13 @@ prepareBursts materialMapMaterial materialMapCoords = objToBurst' materialMapCoo
 
 toBurst :: MaterialMapMaterial -> (MtlName, Coords) -> Either String Burst
 toBurst materialMap (mtlName, coords) = do
-    material' <- maybe (Left "failed mtlName lookup in materialMap") Right $ Dmap.lookup mtlName materialMap
-    let toPosition' = maybe (Left "Missing vertex info for position") Right
+    material' <- maybe error1' Right $ Dmap.lookup mtlName materialMap
+    let toPosition' = maybe error2' Right
     vertices' <- toPosition' $ fst3 coords
-    pure $ Burst vertices' (snd3 coords) (thd3 coords) material'
+--     putStrLn $ printf "toBurst: materialMap %s" (show materialMap)
+    pure $ Burst vertices' (snd3 coords) (thd3 coords) material' where
+        error1' = Left $ printf "Failed lookup for mtlName (%s) in materialMap (%s)" mtlName (show materialMap)
+        error2' = Left "Missing vertex info for position"
 
 prepareFrame :: WavefrontOBJ -> ObjMap
 prepareFrame parsed = do
