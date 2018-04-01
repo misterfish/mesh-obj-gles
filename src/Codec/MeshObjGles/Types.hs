@@ -110,6 +110,7 @@ module Codec.MeshObjGles.Types ( Config (Config)
                                , materialDiffuseColor
                                , materialSpecularColor
                                , materialTexture
+                               , materialTextureTypes
                                , tciImageSpec
                                , tciWidth
                                , tciHeight
@@ -156,7 +157,7 @@ type Parser a = ParsecT String () IO a
 
 data Config = Config { configObjSpec :: ConfigObjectSpec
                      , configMtlSpec :: ConfigMtlSpec
-                     , configTextureConfigYaml :: ByteString }
+                     , configTextureConfigYaml :: Maybe ByteString }
 
 data ConfigTextureSpec = ConfigTextureDir FilePath
 data ConfigObjectSpec = ConfigObjectSpec [ConfigObjectSpecItem]
@@ -243,6 +244,7 @@ instance Show TcitImageSpec where
 data TextureConfig = TextureConfig { tcImageBase64 :: !ByteString
                                    , tcWidth :: !Int
                                    , tcHeight :: !Int }
+                                   deriving Show
 
 instance FromJSON TextureConfigI where
     parseJSON (Y.Object v) = do
@@ -252,9 +254,6 @@ instance FromJSON TextureConfigI where
 instance FromJSON TextureConfigIT where
     parseJSON (Y.Object v) = do
         let trace' i = trace ("trace: " <> show i) i
-        -- img <- (v .: "crimage") <|> (v .: "image") :: Y.Parser Friend
-        -- _ <- pure . seq . trace' $ img
-        -- liftIO . putStrLn $ printf "hello %s" (show img)
         TextureConfigIT <$>
             v .: "materialName" <*>
             (TcitImageFilePath <$> v .: "imageFile"

@@ -89,18 +89,9 @@ import Codec.MeshObjGles.Types
 parse :: String -> TextureMap -> EitherT String IO MaterialMapMaterial
 parse input textureMap = do
     let p :: EitherT ParseError IO MaterialMapMaterial
-        p = parseInput (start textureMap) () inputCanonical
-        inputCanonical = canonicalise input
+        p = parseInput (start textureMap) () input
         show' x = "bad parse: " <> show x
-    liftIO . putStrLn $ printf "can: %s" inputCanonical
     fmapLeftT show' p
-
--- not efficient but makes writing the parser much easier.
--- canonicalise = replaceStr "\n\n" "\n@"
-canonicalise = id
-
--- not efficient: to Text and back.
-replaceStr wat met = Dtext.unpack . Dtext.intercalate met . Dtext.splitOn wat . Dtext.pack
 
 parseInput :: Parser a -> () -> String -> EitherT ParseError IO a
 parseInput start' initState = hoistIOEither . runParserT start' initState "(no filename)" . trim
@@ -125,12 +116,12 @@ material textureMap = do
     ac <- getVertex3 "Ka" <* nl
     dc <- getVertex3 "Kd" <* nl
     sc <- getVertex3 "Ks" <* nl
-    string "Ke" *> many1 notNl <* nl
-    string "Ni" *> many1 notNl <* nl
-    string "d" *> many1 notNl <* nl
-    string "illum" *> many1 notNl
+    option "" $ string "Ke" *> many1 notNl <* nl
+    option "" $ string "Ni" *> many1 notNl <* nl
+    option "" $ string "d" *> many1 notNl <* nl
+    option "" $ string "illum" *> many1 notNl
     tt <- textureTypes
-    liftIO . putStrLn $ printf "name: %s, tt: %s" name (show tt)
+    -- liftIO . putStrLn $ printf "name: %s, tt: %s" name (show tt)
     let texMb = lookupTexture textureMap name
     manyTill anyToken sepOrEof
     pure $ Material (Dtext.pack name) se ac dc sc tt texMb where
@@ -219,4 +210,7 @@ sp :: Parser Char
 sp = oneOf " \t"
 
 vadd xs vec = vec DV.++ DV.fromList xs
+
+-- not efficient: to Text and back.
+replaceStr wat met = Dtext.unpack . Dtext.intercalate met . Dtext.splitOn wat . Dtext.pack
 

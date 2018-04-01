@@ -52,7 +52,7 @@ main = do
     let config = Config c1 c2 c3
         c1 = ConfigObjectSpec $ map ConfigObjectFilePath objFilenames'
         c2 = ConfigMtlFilePath mtlFilename'
-        c3 = textureConfigYaml'
+        c3 = Just textureConfigYaml'
     parsed' <- parse config
     either error' print' parsed' where
         error' x = error $ "Couldn't parse: " <> x

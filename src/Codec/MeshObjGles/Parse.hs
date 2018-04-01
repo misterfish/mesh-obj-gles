@@ -7,6 +7,8 @@ module Codec.MeshObjGles.Parse ( Config (Config)
                                , ConfigObjectSpecItem (ConfigObjectFilePath, ConfigObjectSource)
                                , ConfigMtlSpec (ConfigMtlFilePath, ConfigMtlSource)
                                , TextureConfig (TextureConfig)
+                               , TextureTypesSet
+                               , TextureType (TextureDiffuse, TextureAmbient, TextureDissolve, TextureSpecular, TextureSpecularExp, TextureEmissive)
                                , Sequence (Sequence)
                                , SequenceFrame (SequenceFrame)
                                , Texture (Texture)
@@ -25,6 +27,7 @@ module Codec.MeshObjGles.Parse ( Config (Config)
                                , materialDiffuseColor
                                , materialSpecularColor
                                , materialTexture
+                               , materialTextureTypes
                                , makeInfiniteSequence
                                , tailSequence
                                , tcImageBase64
@@ -123,6 +126,10 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , ObjName
                                          , MtlName
                                          , Texture (Texture)
+                                         , TextureTypesSet
+                                         , TextureType ( TextureDiffuse, TextureAmbient
+                                                       , TextureDissolve, TextureSpecular
+                                                       , TextureSpecularExp, TextureEmissive)
                                          , TextureConfigI (TextureConfigI)
                                          , TextureConfigIT
                                          , TextureConfig (TextureConfig)
@@ -149,6 +156,7 @@ import           Codec.MeshObjGles.Types ( Config (Config)
                                          , materialDiffuseColor
                                          , materialSpecularColor
                                          , materialTexture
+                                         , materialTextureTypes
                                          , tcWidth
                                          , tcHeight
                                          , tcImageBase64
@@ -167,23 +175,23 @@ parse = runEitherT . parse'
 
 parse' :: Config -> EitherT String IO (Sequence, TextureMap)
 parse' config = do
-    let Config objSpec mtlSpec textureConfigYaml = config
+    let Config objSpec mtlSpec textureConfigYamlMb = config
         mtlSource
           | ConfigMtlFilePath fp' <- mtlSpec = BS.readFile fp'
           | ConfigMtlSource src' <- mtlSpec = pure src'
           | otherwise = error "ConfigMtlSpec"
     mtlSource' <- liftIO mtlSource
-    textureMap <- getTextureMap textureConfigYaml
+    textureMap <- maybe (pure Dmap.empty) getTextureMap textureConfigYamlMb
     let ConfigObjectSpec specItems' = objSpec
     materialMapMaterial <- getMaterialMap mtlSource' textureMap
     frames' <- flip mapM specItems' $ \item' ->
-        parseFrame' materialMapMaterial textureConfigYaml item'
+        parseFrame' materialMapMaterial item'
     pure (Sequence frames', textureMap)
 
-parseFrame' :: MaterialMapMaterial -> ByteString -> ConfigObjectSpecItem -> EitherT String IO SequenceFrame
-parseFrame' materialMapMaterial textureConfigYaml objSpecItem = do
+parseFrame' :: MaterialMapMaterial -> ConfigObjectSpecItem -> EitherT String IO SequenceFrame
+parseFrame' materialMapMaterial objSpecItem = do
     objMap <- getObjMap objSpecItem
-    liftIO . putStrLn $ printf "objMap: %s" (show objMap)
+    -- liftIO . putStrLn $ printf "objMap: %s" (show objMap)
 
     let objNames = Dmap.keys objMap
     bursts <- hoistEither . mapListEither (makeBursts materialMapMaterial) $ objMap
