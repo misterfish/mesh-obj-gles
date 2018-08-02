@@ -13,7 +13,9 @@ import           Control.Monad.IO.Class ( liftIO )
 import           Control.Monad ( (<=<), void )
 import           Control.Applicative ( (<|>) )
 import           Data.Monoid ( (<>) )
-import           Control.Monad.Trans.Either ( EitherT, runEitherT, hoistEither )
+
+import           Control.Monad.Trans.Except ( ExceptT, runExceptT )
+
 import           Control.Monad.IO.Class ( liftIO )
 import           Data.Vector as DV ( Vector
                                    , snoc )
@@ -63,7 +65,7 @@ import qualified Text.ParserCombinators.Parsec as P ( parse )
 
 import Codec.MeshObjGles.ParseUtil ( trim
                                    , fmapLeftT
-                                   , hoistIOEither
+                                   , hoistIOExcept
                                    , sepBy1X )
 import Codec.MeshObjGles.Types
              ( Parser
@@ -86,15 +88,15 @@ import Codec.MeshObjGles.Types
 
 -- runParserT: generic parser with arbitrary state over arbitrary monad.
 
-parse :: String -> TextureMap -> EitherT String IO MaterialMapMaterial
+parse :: String -> TextureMap -> ExceptT String IO MaterialMapMaterial
 parse input textureMap = do
-    let p :: EitherT ParseError IO MaterialMapMaterial
+    let p :: ExceptT ParseError IO MaterialMapMaterial
         p = parseInput (start textureMap) () input
         show' x = "bad parse: " <> show x
     fmapLeftT show' p
 
-parseInput :: Parser a -> () -> String -> EitherT ParseError IO a
-parseInput start' initState = hoistIOEither . runParserT start' initState "(no filename)" . trim
+parseInput :: Parser a -> () -> String -> ExceptT ParseError IO a
+parseInput start' initState = hoistIOExcept . runParserT start' initState "(no filename)" . trim
 
 start :: TextureMap -> Parser MaterialMapMaterial
 start textureMap = do

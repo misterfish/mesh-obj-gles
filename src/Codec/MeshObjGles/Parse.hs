@@ -44,7 +44,7 @@ import           Data.Function ( (&) )
 import           Data.Foldable ( foldl' )
 import           Data.List ( groupBy )
 import           Data.Maybe ( fromJust, isJust )
-import           Control.Monad.Trans.Either ( EitherT, runEitherT, hoistEither, bimapEitherT )
+import           Control.Monad.Trans.Except ( ExceptT(ExceptT), runExceptT )
 import           Control.Monad.IO.Class ( liftIO )
 import           Data.Monoid ( (<>) )
 import           Text.Printf ( printf )
@@ -104,10 +104,10 @@ import           Codec.MeshObjGles.ParseUtil ( frint
                                              , verple2
                                              , verple3
                                              , verl2
-                                             , hoistIOEither
                                              , verl3
                                              , dec
                                              , asterisk
+                                             , bimapExceptT
                                              , mapListEither
                                              , mapListM
                                              , mapList
@@ -171,9 +171,9 @@ import qualified Codec.MeshObjGles.ParseMtl as Pmtl  ( parse
 import           Prelude hiding ( elem )
 
 parse :: Config -> IO (Either String (Sequence, TextureMap))
-parse = runEitherT . parse'
+parse = runExceptT . parse'
 
-parse' :: Config -> EitherT String IO (Sequence, TextureMap)
+parse' :: Config -> ExceptT String IO (Sequence, TextureMap)
 parse' config = do
     let Config objSpec mtlSpec textureConfigYamlMb = config
         mtlSource
@@ -188,13 +188,17 @@ parse' config = do
         parseFrame' materialMapMaterial item'
     pure (Sequence frames', textureMap)
 
-parseFrame' :: MaterialMapMaterial -> ConfigObjectSpecItem -> EitherT String IO SequenceFrame
+hoistMyAss :: Either a b -> IO (Either a b)
+hoistMyAss = pure
+
+parseFrame' :: MaterialMapMaterial -> ConfigObjectSpecItem -> ExceptT String IO SequenceFrame
 parseFrame' materialMapMaterial objSpecItem = do
     objMap <- getObjMap objSpecItem
     -- liftIO . putStrLn $ printf "objMap: %s" (show objMap)
 
     let objNames = Dmap.keys objMap
-    bursts <- hoistEither . mapListEither (makeBursts materialMapMaterial) $ objMap
+    -- bursts <- hoistEither . mapListEither (makeBursts materialMapMaterial) $ objMap
+    bursts <- ExceptT . hoistMyAss . mapListEither (makeBursts materialMapMaterial) $ objMap
     pure . SequenceFrame $ concat bursts
 
 -- Prepare list of Burst for a given blender object.
@@ -202,22 +206,23 @@ makeBursts :: MaterialMapMaterial -> ObjName -> MaterialMapCoordsI -> Either Str
 makeBursts mtlMapMaterial objName mtlMapCoords =
     prepareBursts mtlMapMaterial mtlMapCoords
 
-getObjMap :: ConfigObjectSpecItem -> EitherT String IO ObjMap
-getObjMap = bimapEitherT error' prepareFrame . parseObj where
+getObjMap :: ConfigObjectSpecItem -> ExceptT String IO ObjMap
+getObjMap = bimapExceptT error' prepareFrame . parseObj where
     error' = ("bad obj parse: " <>)
 
-parseObj :: ConfigObjectSpecItem -> EitherT String IO WavefrontOBJ
-parseObj (ConfigObjectFilePath fp) = hoistIOEither $ Cwav.fromFile fp
-parseObj (ConfigObjectSource src)  = hoistIOEither $ Cwav.fromSource src
+parseObj :: ConfigObjectSpecItem -> ExceptT String IO WavefrontOBJ
+parseObj (ConfigObjectFilePath fp) = ExceptT $ Cwav.fromFile fp
+parseObj (ConfigObjectSource src)  = ExceptT $ Cwav.fromSource src
 
-getMaterialMap :: ByteString -> TextureMap -> EitherT String IO MaterialMapMaterial
+getMaterialMap :: ByteString -> TextureMap -> ExceptT String IO MaterialMapMaterial
 getMaterialMap mtlSource textureMap =
     Pmtl.parse (BS8.unpack mtlSource) textureMap
 
-getTextureMap :: ByteString -> EitherT String IO TextureMap
+getTextureMap :: ByteString -> ExceptT String IO TextureMap
 getTextureMap textureConfigYaml = do
-    let texConfigI :: EitherT String IO TextureConfigI
-        texConfigI = fmapLeftT error' . hoistEither $ textureConfig'
+    let texConfigI :: ExceptT String IO TextureConfigI
+        -- texConfigI = fmapLeftT error' . ExceptT $ textureConfig'
+        texConfigI = fmapLeftT error' . ExceptT . hoistMyAss $ textureConfig'
         textureConfig' = Y.decodeEither' textureConfigYaml
         error' :: ParseException -> String
         error' = ("Couldn't decode texture config yaml: " <>) . prettyPrintParseException

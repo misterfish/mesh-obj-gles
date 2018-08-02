@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Codec.MeshObjGles.ParseUtil ( trim
                                    , frint
                                    , verple2
@@ -5,7 +7,8 @@ module Codec.MeshObjGles.ParseUtil ( trim
                                    , verl2
                                    , fmapLeft
                                    , fmapLeftT
-                                   , hoistIOEither
+                                   , bimapExceptT
+                                   , hoistIOExcept
                                    , verl3
                                    , dec
                                    , asterisk
@@ -18,7 +21,7 @@ module Codec.MeshObjGles.ParseUtil ( trim
                                    , thd3 ) where
 
 import           Control.Monad ( (<=<), void )
-import           Control.Monad.Trans.Either ( EitherT, runEitherT, hoistEither, bimapEitherT )
+import           Control.Monad.Trans.Except ( ExceptT(ExceptT), mapExceptT, runExceptT )
 import           Control.Monad.IO.Class ( liftIO )
 import           Data.Functor.Identity ( Identity )
 import           Data.Char ( isSpace )
@@ -60,11 +63,25 @@ fmapLeft :: (a -> c) -> Either a b -> Either c b
 fmapLeft f (Left l) = Left $ f l
 fmapLeft _ (Right r) = Right r
 
-fmapLeftT :: Functor m => (a -> c) -> EitherT a m b -> EitherT c m b
-fmapLeftT f = bimapEitherT f id
+bimapExceptT :: forall a b c d m. Functor m => (a -> c) -> (b -> d) -> ExceptT a m b -> ExceptT c m d
+bimapExceptT f g xt = bimap' . runExceptT $ xt where
+    bimap' :: Functor m => m (Either a b) -> ExceptT c m d
+    bimap' x = ExceptT $ bimap'' <$> x
+    bimap'' :: Either a b -> Either c d
+    bimap'' (Left l) = Left . f $ l
+    bimap'' (Right r) = Right . g $ r
 
-hoistIOEither :: IO (Either a b) -> EitherT a IO b
-hoistIOEither = hoistEither <=< liftIO
+-- fmapLeftT :: Functor m => (a -> c) -> EitherT a m b -> EitherT c m b
+-- fmapLeftT f = bimapEitherT f id
+fmapLeftT :: Functor m => (a -> c) -> ExceptT a m b -> ExceptT c m b
+fmapLeftT f = bimapExceptT f id
+
+-- EitherT a IO is the MonadIO instance.
+-- hoistIOEither :: forall a b. IO (Either a b) -> EitherT a IO b
+-- hoistIOEither = hoistEither <=< liftIO
+
+hoistIOExcept :: forall a b. IO (Either a b) -> ExceptT a IO b
+hoistIOExcept = ExceptT
 
 -- included to increase readability a bit.
 mapListEither :: Ord a => (a -> b -> Either d c) -> Map a b -> Either d [c]
