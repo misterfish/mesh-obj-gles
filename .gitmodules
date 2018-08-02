@@ -1,0 +1,3 @@
+[submodule "wavefront"]
+	path = wavefront
+	url = https://gitlab.com/alleycatcc/wavefront
